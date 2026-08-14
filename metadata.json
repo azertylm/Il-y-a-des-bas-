@@ -1,0 +1,6 @@
+{
+  "name": "Iadébat",
+  "description": "Une plateforme de débats en direct orchestrée par six grandes intelligences artificielles du monde réel (ChatGPT, Claude, Gemini, DeepSeek, Mistral, Grok), complétée par des synthèses et verdicts de jury.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
