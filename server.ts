@@ -306,9 +306,16 @@ function saveStore(store: ArchiveStore) {
 // ─── CLIENTS DE MODÈLES ──────────────────────────────────────────────────────
 let sharedGeminiClient: GoogleGenAI | null = null;
 
+// Permet de router les appels Gemini vers une passerelle interne ou un
+// bouchon de test sans toucher au code.
+const GEMINI_BASE_URL = process.env.GEMINI_BASE_URL || undefined;
+
 function geminiClient(customKey?: string): GoogleGenAI {
   if (customKey) {
-    return new GoogleGenAI({ apiKey: customKey });
+    return new GoogleGenAI({
+      apiKey: customKey,
+      ...(GEMINI_BASE_URL ? { httpOptions: { baseUrl: GEMINI_BASE_URL } } : {}),
+    });
   }
   if (!sharedGeminiClient) {
     const key = process.env.GEMINI_API_KEY;
@@ -319,7 +326,10 @@ function geminiClient(customKey?: string): GoogleGenAI {
     }
     sharedGeminiClient = new GoogleGenAI({
       apiKey: key,
-      httpOptions: { headers: { "User-Agent": "aistudio-build" } },
+      httpOptions: {
+        headers: { "User-Agent": "aistudio-build" },
+        ...(GEMINI_BASE_URL ? { baseUrl: GEMINI_BASE_URL } : {}),
+      },
     });
   }
   return sharedGeminiClient;

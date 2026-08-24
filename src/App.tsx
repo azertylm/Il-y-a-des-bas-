@@ -44,6 +44,9 @@ interface Message {
   time: string;
   isUser?: boolean;
   claps?: number;
+  /** Vrai lorsque le texte provient du moteur de secours local, pas d'une vraie génération. */
+  degraded?: boolean;
+  degradedReason?: string;
 }
 
 interface Topic {
@@ -62,6 +65,18 @@ interface Archive {
   verdict?: Verdict;
   closedAt: string;
   roundCount: number;
+  summaryDegraded?: boolean;
+  summaryReason?: string;
+  verdictDegraded?: boolean;
+  verdictReason?: string;
+}
+
+/** Contrat commun à toutes les routes susceptibles de basculer sur le secours local. */
+interface ApiEnvelope {
+  source?: "remote" | "local";
+  degraded?: boolean;
+  kind?: string;
+  reason?: string;
 }
 
 interface Verdict {
@@ -157,11 +172,25 @@ function getCurrentTopicIndex() {
   return Math.floor(new Date().getUTCHours() / 4) % DEFAULT_TOPICS.length; 
 }
 
+/**
+ * Horodatage absolu de la prochaine bascule de cycle (UTC).
+ * On raisonne sur un instant fixe et non sur un décompte relatif : un onglet
+ * mis en arrière-plan voit ses minuteries ralenties par le navigateur et
+ * raterait le créneau si l'on attendait la seconde exactement égale à zéro.
+ */
+function getNextCycleBoundary(from: number = Date.now()): number {
+  const d = new Date(from);
+  const nextSlot = (Math.floor(d.getUTCHours() / 4) + 1) * 4;
+  const boundary = new Date(
+    Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), 0, 0, 0, 0)
+  );
+  // setUTCHours(24) bascule proprement sur minuit du jour suivant.
+  boundary.setUTCHours(nextSlot);
+  return boundary.getTime();
+}
+
 function getSecondsUntilNextCycle() {
-  const now = new Date();
-  const h = now.getUTCHours(), m = now.getUTCMinutes(), s = now.getUTCSeconds();
-  const nextSlot = (Math.floor(h / 4) + 1) * 4;
-  return Math.max(0, (nextSlot - h) * 3600 - m * 60 - s);
+  return Math.max(0, Math.ceil((getNextCycleBoundary() - Date.now()) / 1000));
 }
 
 function fmtTimer(sec: number) {
@@ -177,6 +206,131 @@ function fmtDate(iso: string) {
     hour: "2-digit", 
     minute: "2-digit" 
   });
+}
+
+// ─── CONTEXTE TRANSMIS AUX MODÈLES ───────────────────────────────────────────
+// Six interventions d'environ 700 caractères : en deçà, les modèles ne
+// disposaient pas d'assez de matière pour se répondre réellement.
+const CONTEXT_MESSAGE_COUNT = 6;
+const CONTEXT_EXCERPT_LENGTH = 700;
+
+/** Une requête annulée volontairement n'est pas une panne : on la distingue. */
+function isAbort(error: any): boolean {
+  return error?.name === "AbortError";
+}
+
+/** Tronque sur une frontière de mot, et n'ajoute les points de suspension que si nécessaire. */
+function excerpt(text: string, maxLength: number): string {
+  const clean = text.trim();
+  if (clean.length <= maxLength) return clean;
+  const cut = clean.slice(0, maxLength);
+  const lastSpace = cut.lastIndexOf(" ");
+  return `${(lastSpace > maxLength * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd()}…`;
+}
+
+// ─── MÉTRIQUES D'OPINION ─────────────────────────────────────────────────────
+type OpinionMetrics = { rigueur: number; ethique: number; pragmatisme: number; culture: number };
+
+const NEUTRAL_METRICS: OpinionMetrics = { rigueur: 25, ethique: 25, pragmatisme: 25, culture: 25 };
+
+const METRIC_AXIS: { [agentId: string]: keyof OpinionMetrics } = {
+  chatgpt: "rigueur",
+  gemini: "rigueur",
+  claude: "ethique",
+  deepseek: "pragmatisme",
+  mistral: "culture",
+  grok: "culture",
+};
+
+/**
+ * Répartit 100 points entre les quatre axes au prorata du poids de chaque
+ * intervention. L'ancien calcul cumulait des points bornés à 100 par axe :
+ * les quatre jauges étaient donc pleines dès le sixième message et
+ * n'apprenaient plus rien au lecteur.
+ */
+function computeOpinionMetrics(messages: Message[]): OpinionMetrics {
+  const weights: OpinionMetrics = { rigueur: 0, ethique: 0, pragmatisme: 0, culture: 0 };
+
+  messages.forEach(m => {
+    const axis = METRIC_AXIS[m.agentId];
+    if (!axis) return; // les interventions humaines ne pèsent sur aucun axe
+    // Les soutiens du public amplifient le poids d'une intervention.
+    weights[axis] += 1 + (m.claps || 0) * 0.5;
+  });
+
+  const axes = Object.keys(weights) as (keyof OpinionMetrics)[];
+  const total = axes.reduce((sum, axis) => sum + weights[axis], 0);
+  if (total === 0) return { ...NEUTRAL_METRICS };
+
+  // Méthode des plus forts restes : les quatre parts totalisent exactement 100.
+  const exact = axes.map(axis => ({ axis, value: (weights[axis] / total) * 100 }));
+  const result = { rigueur: 0, ethique: 0, pragmatisme: 0, culture: 0 } as OpinionMetrics;
+  exact.forEach(({ axis, value }) => { result[axis] = Math.floor(value); });
+
+  let remainder = 100 - axes.reduce((sum, axis) => sum + result[axis], 0);
+  exact
+    .sort((a, b) => (b.value % 1) - (a.value % 1))
+    .forEach(({ axis }) => {
+      if (remainder > 0) { result[axis] += 1; remainder -= 1; }
+    });
+
+  return result;
+}
+
+// ─── STOCKAGE NAVIGATEUR ─────────────────────────────────────────────────────
+const API_KEYS_STORAGE_KEY = "debate_api_keys";
+const CLIENT_ID_STORAGE_KEY = "iadebat_client_id";
+const EMPTY_API_KEYS = { chatgpt: "", claude: "", gemini: "", deepseek: "", mistral: "", grok: "" };
+
+/**
+ * Les clés API vivent en `sessionStorage` : elles disparaissent à la fermeture
+ * de l'onglet au lieu de rester indéfiniment sur le disque. Les clés déjà
+ * présentes dans `localStorage` sont reprises une dernière fois puis effacées.
+ */
+function loadApiKeys(): { [key: string]: string } {
+  try {
+    const fromSession = sessionStorage.getItem(API_KEYS_STORAGE_KEY);
+    if (fromSession) return { ...EMPTY_API_KEYS, ...JSON.parse(fromSession) };
+
+    const legacy = localStorage.getItem(API_KEYS_STORAGE_KEY);
+    if (legacy) {
+      localStorage.removeItem(API_KEYS_STORAGE_KEY);
+      sessionStorage.setItem(API_KEYS_STORAGE_KEY, legacy);
+      return { ...EMPTY_API_KEYS, ...JSON.parse(legacy) };
+    }
+  } catch {
+    /* stockage indisponible : on repart à vide */
+  }
+  return { ...EMPTY_API_KEYS };
+}
+
+function persistApiKeys(keys: { [key: string]: string }) {
+  try {
+    sessionStorage.setItem(API_KEYS_STORAGE_KEY, JSON.stringify(keys));
+  } catch {
+    /* stockage indisponible : les clés restent valables pour la session en cours */
+  }
+}
+
+/**
+ * Identifiant de navigateur stable, envoyé en `x-client-id`. Il cloisonne les
+ * archives côté serveur : chaque visiteur ne voit que ses propres séances.
+ * Contrairement aux clés API, il doit survivre à la fermeture de l'onglet.
+ */
+function resolveClientId(): string {
+  const mint = () =>
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `c-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 12)}`;
+  try {
+    const existing = localStorage.getItem(CLIENT_ID_STORAGE_KEY);
+    if (existing) return existing;
+    const generated = mint();
+    localStorage.setItem(CLIENT_ID_STORAGE_KEY, generated);
+    return generated;
+  } catch {
+    return mint();
+  }
 }
 
 export default function AIDebate() {
@@ -201,6 +355,12 @@ export default function AIDebate() {
   const [selectedArchive, setSelectedArchive] = useState<Archive | null>(null);
   const [closingProgress, setClosingProgress] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  // Signalement visible d'une réponse produite par le moteur de secours local.
+  const [degradedNotice, setDegradedNotice] = useState<string | null>(null);
+  const [summaryDegraded, setSummaryDegraded] = useState(false);
+  const [summaryReason, setSummaryReason] = useState("");
+  const [verdictDegraded, setVerdictDegraded] = useState(false);
+  const [verdictReason, setVerdictReason] = useState("");
 
   // --- PARAMÈTRES AVANCÉS ET PERSONNALISATION ---
   const [activeMode, setActiveMode] = useState<"temporal" | "custom" | "gemini-theme">("temporal");
@@ -230,34 +390,24 @@ export default function AIDebate() {
   const [isSubmittingUserContribution, setIsSubmittingUserContribution] = useState(false);
 
   // Simulated metrics
-  const [opinionMetrics, setOpinionMetrics] = useState({
-    rigueur: 50,
-    ethique: 50,
-    pragmatisme: 50,
-    culture: 50,
-  });
+  const [opinionMetrics, setOpinionMetrics] = useState<OpinionMetrics>(NEUTRAL_METRICS);
 
   // --- CLÉS API DES UTILISATEURS ---
   const [showApiKeys, setShowApiKeys] = useState(false);
-  const [apiKeys, setApiKeys] = useState<{ [key: string]: string }>(() => {
-    try {
-      const saved = localStorage.getItem("debate_api_keys");
-      return saved ? JSON.parse(saved) : { chatgpt: "", claude: "", gemini: "", deepseek: "", mistral: "", grok: "" };
-    } catch {
-      return { chatgpt: "", claude: "", gemini: "", deepseek: "", mistral: "", grok: "" };
-    }
-  });
+  const [apiKeys, setApiKeys] = useState<{ [key: string]: string }>(loadApiKeys);
+  const clientId = useRef<string>(resolveClientId()).current;
   const [visibleApiKeyIds, setVisibleApiKeyIds] = useState<{ [key: string]: boolean }>({});
 
   const handleSaveApiKey = (agentId: string, value: string) => {
     const updated = { ...apiKeys, [agentId]: value };
     setApiKeys(updated);
-    localStorage.setItem("debate_api_keys", JSON.stringify(updated));
+    persistApiKeys(updated);
   };
 
   const getHeaders = useCallback(() => {
     const headers: Record<string, string> = {
-      "Content-Type": "application/json"
+      "Content-Type": "application/json",
+      "x-client-id": clientId,
     };
     if (apiKeys.chatgpt) headers["x-openai-api-key"] = apiKeys.chatgpt;
     if (apiKeys.claude) headers["x-anthropic-api-key"] = apiKeys.claude;
@@ -266,48 +416,44 @@ export default function AIDebate() {
     if (apiKeys.mistral) headers["x-mistral-api-key"] = apiKeys.mistral;
     if (apiKeys.grok) headers["x-grok-api-key"] = apiKeys.grok;
     return headers;
-  }, [apiKeys]);
+  }, [apiKeys, clientId]);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const stopRequested = useRef(false);
   const messagesRef = useRef<Message[]>([]);
+  // Annule les requêtes encore en vol lors d'une pause ou d'une réinitialisation.
+  const abortRef = useRef<AbortController | null>(null);
+
+  // La clôture est déclenchée par un effet ; en mode strict React invoque les
+  // effets deux fois, et « Arrêter & Délibérer » l'appelait déjà en direct.
+  // Sans cette garde, la séance était synthétisée et archivée en double.
+  const closingRef = useRef(false);
+
+  const abortInFlight = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+  }, []);
+
+  // Ne jamais laisser une requête survivre au démontage du composant.
+  useEffect(() => () => abortRef.current?.abort(), []);
 
   // Garder les messages dans un ref pour les boucles asynchrones
   useEffect(() => {
     messagesRef.current = messages;
-    // Ajuster dynamiquement les métriques d'opinion basées sur le profil des derniers messages
-    if (messages.length > 0) {
-      const counts = { rigueur: 50, ethique: 50, pragmatisme: 50, culture: 50 };
-      messages.forEach(m => {
-        const factor = 10 + (m.claps || 0);
-        if (m.agentId === "chatgpt" || m.agentId === "gemini") counts.rigueur = Math.min(100, counts.rigueur + factor);
-        if (m.agentId === "claude") counts.ethique = Math.min(100, counts.ethique + factor);
-        if (m.agentId === "deepseek") counts.pragmatisme = Math.min(100, counts.pragmatisme + factor);
-        if (m.agentId === "mistral" || m.agentId === "grok") counts.culture = Math.min(100, counts.culture + factor);
-      });
-      // Normaliser
-      setOpinionMetrics({
-        rigueur: Math.round(counts.rigueur),
-        ethique: Math.round(counts.ethique),
-        pragmatisme: Math.round(counts.pragmatisme),
-        culture: Math.round(counts.culture),
-      });
-    } else {
-      setOpinionMetrics({ rigueur: 50, ethique: 50, pragmatisme: 50, culture: 50 });
-    }
+    setOpinionMetrics(computeOpinionMetrics(messages));
   }, [messages]);
 
   // Construction du contexte des messages récents pour orienter la confrontation
   const buildContext = useCallback((currentAgentId: string, currentMessages: Message[]) => {
-    const recent = currentMessages.slice(-4).filter(m => m.agentId !== currentAgentId);
+    const recent = currentMessages.slice(-CONTEXT_MESSAGE_COUNT).filter(m => m.agentId !== currentAgentId);
     if (!recent.length) return "";
-    
+
     const lines = recent.map(m => {
       if (m.isUser) {
         return `Le participant Humain (${m.agentRole}) a affirmé l'argument suivant : "${m.content}"`;
       }
-      return `${m.agentName} (${m.agentRole}) a formulé : "${m.content.slice(0, 200)}..."`;
+      return `${m.agentName} (${m.agentRole}) a formulé : "${excerpt(m.content, CONTEXT_EXCERPT_LENGTH)}"`;
     }).join("\n\n");
 
     const userInRecent = recent.some(m => m.isUser);
@@ -319,48 +465,76 @@ export default function AIDebate() {
   }, []);
 
   // Récupérer les archives du serveur local
-  const fetchArchives = async () => {
+  const fetchArchives = useCallback(async () => {
     try {
-      const res = await fetch("/api/archives");
+      const res = await fetch("/api/archives", { headers: { "x-client-id": clientId } });
       if (res.ok) {
         const data = await res.json();
-        setArchives(data);
+        setArchives(Array.isArray(data) ? data : []);
       }
     } catch (e) {
       console.error("Problème lors du chargement des archives:", e);
     }
-  };
+  }, [clientId]);
 
   useEffect(() => {
     fetchArchives();
-  }, []);
+  }, [fetchArchives]);
 
-  // Timer de session de la rotation par défaut
+  // Timer de session de la rotation par défaut.
+  // On compare des horodatages absolus : un onglet en arrière-plan voit ses
+  // minuteries ralenties par le navigateur, et une égalité stricte à zéro
+  // seconde serait tout simplement sautée. Ici, tout retard est rattrapé.
   useEffect(() => {
-    timerRef.current = setInterval(() => {
-      const secs = getSecondsUntilNextCycle();
-      setTimeLeft(secs);
-      
-      // Seulement si on utilise le mode temporel par défaut, on déclenche la fermeture automatique à la fin du cycle
-      if (secs === 0 && activeMode === "temporal") {
-        if (timerRef.current) clearInterval(timerRef.current);
+    let boundary = getNextCycleBoundary();
+
+    const tick = () => {
+      const remainingMs = boundary - Date.now();
+      setTimeLeft(Math.max(0, Math.ceil(remainingMs / 1000)));
+
+      if (remainingMs > 0) return;
+
+      // Le créneau est écoulé (éventuellement depuis un moment) : on referme
+      // la séance en cours puis on vise la borne suivante.
+      boundary = getNextCycleBoundary();
+      setTimeLeft(Math.max(0, Math.ceil((boundary - Date.now()) / 1000)));
+      if (activeMode === "temporal") {
         setPhase(p => (p !== "closing" && p !== "closed") ? "closing" : p);
       }
-    }, 1000);
+    };
+
+    tick();
+    timerRef.current = setInterval(tick, 1000);
+
+    // Resynchronisation immédiate au retour au premier plan.
+    const onVisibility = () => { if (!document.hidden) tick(); };
+    document.addEventListener("visibilitychange", onVisibility);
+
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
   }, [activeMode]);
 
   // Clôture du débat avec génération d'analyses et du Verdict du Grand Jury
   const closeDebate = useCallback(async (currentMessages: Message[]) => {
+    if (closingRef.current) return;
+    closingRef.current = true;
     setPhase("closing");
     setLoadingAgent(null);
     setClosingProgress("Le Grand Tribunal des Modèles délibère sur les arguments...");
     setErrorMessage(null);
 
+    const controller = new AbortController();
+    abortRef.current?.abort();
+    abortRef.current = controller;
+
     let sumText = "";
     let finalVerdict: Verdict | undefined = undefined;
+    let sumDegraded = false;
+    let sumReason = "";
+    let judgeDegraded = false;
+    let judgeReason = "";
 
     try {
       if (currentMessages.length > 0) {
@@ -368,6 +542,7 @@ export default function AIDebate() {
         const res = await fetch("/api/debate/summary", {
           method: "POST",
           headers: getHeaders(),
+          signal: controller.signal,
           body: JSON.stringify({
             topicTitle: activeTopic.title,
             topicDescription: activeTopic.description,
@@ -376,13 +551,17 @@ export default function AIDebate() {
         });
 
         if (!res.ok) {
-          const err = await res.json();
+          const err = await res.json().catch(() => ({}));
           throw new Error(err.error || "Erreur de communication lors de la génération du résumé.");
         }
 
-        const data = await res.json();
-        sumText = data.text;
+        const data: ApiEnvelope & { text?: string } = await res.json();
+        sumText = data.text || "";
+        sumDegraded = Boolean(data.degraded);
+        sumReason = data.reason || "";
         setSummary(sumText);
+        setSummaryDegraded(sumDegraded);
+        setSummaryReason(sumReason);
 
         // 2. Délibération et attribution des points uniques façon "Grand Jury" par Gemini
         setClosingProgress("Rédaction des sentences décisionnelles et attribution des distinctions...");
@@ -425,6 +604,7 @@ export default function AIDebate() {
         const juryRes = await fetch("/api/debate/generate", {
           method: "POST",
           headers: getHeaders(),
+          signal: controller.signal,
           body: JSON.stringify({
             systemPrompt: "Tu es le Président impartial du Comité de Sages du Grand Tribunal d'éloquence artificielle. Tu juges de façon philosophique et pointue.",
             topicTitle: `JURY : ${activeTopic.title}`,
@@ -435,13 +615,17 @@ export default function AIDebate() {
         });
 
         if (!juryRes.ok) {
-          const err = await juryRes.json();
+          const err = await juryRes.json().catch(() => ({}));
           throw new Error(err.error || "Erreur de communication lors de la délibération du jury.");
         }
 
-        const juryData = await juryRes.json();
+        const juryData: ApiEnvelope & { text?: string } = await juryRes.json();
+        judgeDegraded = Boolean(juryData.degraded);
+        judgeReason = juryData.reason || "";
+        setVerdictDegraded(judgeDegraded);
+        setVerdictReason(judgeReason);
         try {
-          let cleanText = juryData.text.trim();
+          let cleanText = (juryData.text || "").trim();
           if (cleanText.startsWith("```json")) {
             cleanText = cleanText.replace(/^```json/, "").replace(/```$/, "").trim();
           } else if (cleanText.startsWith("```")) {
@@ -457,10 +641,21 @@ export default function AIDebate() {
         setSummary(sumText);
       }
     } catch (e: any) {
+      if (isAbort(e)) {
+        setClosingProgress("");
+        closingRef.current = false;
+        return;
+      }
       console.error(e);
       sumText = "La synthèse prospective et les analyses du jury sont temporairement inaccessibles en raison d'un conflit réseau.";
       setSummary(sumText);
       setErrorMessage(e.message || "Erreur de traitement des données de synthèse.");
+    }
+
+    if (sumDegraded || judgeDegraded) {
+      setDegradedNotice(
+        "La clôture de séance a été rédigée par le moteur de secours local : ni la synthèse ni le verdict ne proviennent d'une génération réelle."
+      );
     }
 
     // Sauvegarde en archive durable de l'historique complet
@@ -472,12 +667,16 @@ export default function AIDebate() {
       verdict: finalVerdict,
       closedAt: new Date().toISOString(),
       roundCount,
+      summaryDegraded: sumDegraded,
+      summaryReason: sumReason,
+      verdictDegraded: judgeDegraded,
+      verdictReason: judgeReason,
     };
 
     try {
       const saveRes = await fetch("/api/archives", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getHeaders(),
         body: JSON.stringify(record),
       });
       if (saveRes.ok) {
@@ -487,8 +686,10 @@ export default function AIDebate() {
       console.error("Problème d'enregistrement de l'archive:", err);
     }
 
+    if (abortRef.current === controller) abortRef.current = null;
     setClosingProgress("");
     setPhase("closed");
+    closingRef.current = false;
   }, [activeTopic, roundCount, getHeaders]);
 
   useEffect(() => {
@@ -502,18 +703,27 @@ export default function AIDebate() {
     if (!keyword.trim()) return;
     setIsGeneratingTopics(true);
     setErrorMessage(null);
+    setDegradedNotice(null);
     try {
       const res = await fetch("/api/debate/suggest-topics", {
         method: "POST",
         headers: getHeaders(),
         body: JSON.stringify({ keyword }),
       });
-      if (res.ok) {
-        const list = await res.json();
-        setSuggestedTopics(list);
-      } else {
+      if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || "L'API de suggestion a retourné un statut invalide.");
+      }
+
+      // Le serveur enveloppe désormais la liste : { topics, source, degraded, … }
+      const data: ApiEnvelope & { topics?: Topic[] } = await res.json();
+      const list = Array.isArray(data.topics) ? data.topics : [];
+      setSuggestedTopics(list);
+
+      if (data.degraded) {
+        setDegradedNotice(
+          `Thèmes issus du catalogue local, sans génération réelle. ${data.reason || ""}`.trim()
+        );
       }
     } catch (e: any) {
       setErrorMessage(`Impossible de générer des suggestions: ${e.message}`);
@@ -567,6 +777,12 @@ export default function AIDebate() {
     setErrorMessage(null);
     stopRequested.current = false;
 
+    // Un contrôleur par tour de table : « Pause » et « Réinitialiser » coupent
+    // net la requête en vol au lieu de la laisser aboutir dans le vide.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
     // Filtration selon les agents sélectionnés par l'utilisateur
     const activeAgents = agentList.filter(a => activeAgentsFlags[a.id]);
     if (activeAgents.length === 0) {
@@ -575,8 +791,12 @@ export default function AIDebate() {
       return;
     }
 
+    // Un orateur défaillant est écarté du tour, il n'interrompt plus la séance.
+    const failures: string[] = [];
+    const degradations: string[] = [];
+
     for (const agent of activeAgents) {
-      if (stopRequested.current) break;
+      if (stopRequested.current || controller.signal.aborted) break;
       
       setLoadingAgent(agent.id);
       
@@ -604,6 +824,7 @@ export default function AIDebate() {
         const res = await fetch("/api/debate/generate", {
           method: "POST",
           headers: getHeaders(),
+          signal: controller.signal,
           body: JSON.stringify({
             systemPrompt: enhancedPrompt,
             topicTitle: activeTopic.title,
@@ -614,12 +835,15 @@ export default function AIDebate() {
         });
 
         if (!res.ok) {
-          const err = await res.json();
+          const err = await res.json().catch(() => ({}));
           throw new Error(err.error || `Erreur de traitement sur le modèle d'${agent.name}`);
         }
 
-        const data = await res.json();
+        const data: ApiEnvelope & { text?: string } = await res.json();
         const text = data.text;
+        if (!text) throw new Error(`${agent.name} n'a renvoyé aucun texte.`);
+
+        if (data.degraded) degradations.push(agent.name);
 
         const msg: Message = {
           id: `${agent.id}-${Date.now()}`,
@@ -633,26 +857,50 @@ export default function AIDebate() {
           content: text,
           time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
           claps: 0,
+          degraded: Boolean(data.degraded),
+          degradedReason: data.reason || "",
         };
 
         setMessages(prev => [...prev, msg]);
-      } catch (e: any) { 
+      } catch (e: any) {
+        if (isAbort(e)) break;
+        // On note la défaillance et on passe à l'orateur suivant : une panne
+        // isolée ne doit plus faire tomber tout le tour de table.
         console.error(agent.name, e);
-        setErrorMessage(`Défaillance passagère de ${agent.name}: ${e.message}`);
-        stopRequested.current = true;
-        setPhase("paused");
+        failures.push(agent.name);
+      } finally {
         setLoadingAgent(null);
-        return;
       }
-      
-      setLoadingAgent(null);
+
+      if (stopRequested.current || controller.signal.aborted) break;
       // Temporisation de lecture réaliste
       await new Promise(r => setTimeout(r, 650));
     }
-    
+
+    if (abortRef.current === controller) abortRef.current = null;
+
+    if (controller.signal.aborted) {
+      setPhase(p => (p === "closing" || p === "closed") ? p : "paused");
+      return;
+    }
+
+    if (failures.length) {
+      setErrorMessage(
+        failures.length === activeAgents.length
+          ? "Aucun orateur n'a pu s'exprimer durant ce tour. Vérifiez votre connexion réseau, puis relancez la table ronde."
+          : `Orateur(s) écarté(s) de ce tour faute de réponse : ${failures.join(", ")}. Le débat se poursuit avec les autres.`
+      );
+    }
+
+    if (degradations.length) {
+      setDegradedNotice(
+        `Réponses produites par le moteur de secours local (aucune génération réelle) pour : ${degradations.join(", ")}.`
+      );
+    }
+
     setRoundCount(n => n + 1);
-    setPhase("paused");
-  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength]);
+    setPhase(p => (p === "closing" || p === "closed") ? p : "paused");
+  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength, getHeaders]);
 
   // Contrôleurs interactifs principaux
   const handleStart = () => {
@@ -661,6 +909,8 @@ export default function AIDebate() {
 
   const handlePause = () => {
     stopRequested.current = true;
+    abortInFlight();
+    setLoadingAgent(null);
     setPhase("paused");
   };
 
@@ -671,16 +921,26 @@ export default function AIDebate() {
 
   const handleStopAndSummarize = () => {
     stopRequested.current = true;
-    closeDebate(messages);
+    setPhase("closing");
   };
 
   const handleReset = () => {
+    stopRequested.current = true;
+    abortInFlight();
     setMessages([]);
     setRoundCount(0);
     setSummary("");
+    setSummaryDegraded(false);
+    setSummaryReason("");
     setVerdict(null);
+    setVerdictDegraded(false);
+    setVerdictReason("");
+    setLoadingAgent(null);
+    setClosingProgress("");
+    closingRef.current = false;
     setPhase("idle");
     setErrorMessage(null);
+    setDegradedNotice(null);
   };
 
   const handleClapMessage = (msgId: string) => {
@@ -696,7 +956,10 @@ export default function AIDebate() {
     e.stopPropagation();
     if (!confirm("Effacer définitivement ce procès-verbal du serveur local de stockage ?")) return;
     try {
-      const res = await fetch(`/api/archives/${key}`, { method: "DELETE" });
+      const res = await fetch(`/api/archives/${encodeURIComponent(key)}`, {
+        method: "DELETE",
+        headers: { "x-client-id": clientId },
+      });
       if (res.ok) {
         if (selectedArchive?.key === key) {
           setSelectedArchive(null);
@@ -820,6 +1083,22 @@ export default function AIDebate() {
             <strong>Une anomalie s'est produite :</strong> {errorMessage}. Veuillez vérifier vos paramètres ou votre connexion réseau.
           </div>
           <button onClick={() => setErrorMessage(null)} className="text-white hover:opacity-100 opacity-60 text-xs font-bold bg-transparent border-none cursor-pointer">
+            Fermer X
+          </button>
+        </div>
+      )}
+
+      {/* ── SIGNALEMENT DU MODE DÉGRADÉ ──────────────────────────────────── */}
+      {degradedNotice && (
+        <div className="bg-amber-500/10 border-b border-amber-500/25 px-6 py-3 flex items-center gap-3 text-sm text-amber-200 z-40 relative animate-fadeSlideUp">
+          <ShieldAlert className="w-5 h-5 shrink-0 text-amber-400" />
+          <div className="flex-1 leading-snug">
+            <strong className="font-condensed tracking-wider uppercase">Mode secours local :</strong> {degradedNotice}
+            <span className="block text-[11px] text-amber-200/70 mt-0.5">
+              Les textes signalés « Secours local » sont des gabarits pré-rédigés, pas des réponses réellement générées par les modèles.
+            </span>
+          </div>
+          <button onClick={() => setDegradedNotice(null)} className="text-white hover:opacity-100 opacity-60 text-xs font-bold bg-transparent border-none cursor-pointer shrink-0">
             Fermer X
           </button>
         </div>
@@ -1066,7 +1345,7 @@ export default function AIDebate() {
                 {showApiKeys && (
                   <div className="flex flex-col gap-3.5 mt-2 animate-fadeSlideUp">
                     <p className="text-[10px] text-gray-500 leading-normal">
-                      Entrez vos propres clés pour stimuler les véritables moteurs de chaque constructeur d'IA. Les clés sont stockées localement et ne transitent que vers le serveur pour relayer vos requêtes.
+                      Entrez vos propres clés pour solliciter les véritables moteurs de chaque constructeur d'IA. Elles sont conservées uniquement pour la durée de l'onglet (<code className="font-mono">sessionStorage</code>), effacées à sa fermeture, et ne transitent que vers ce serveur pour relayer vos requêtes.
                     </p>
                     
                     {[
@@ -1116,14 +1395,14 @@ export default function AIDebate() {
                       <button
                         onClick={() => {
                           if (window.confirm("Voulez-vous vraiment supprimer toutes les clés de votre navigateur ?")) {
-                            const resetKeys = { chatgpt: "", claude: "", gemini: "", deepseek: "", mistral: "", grok: "" };
+                            const resetKeys = { ...EMPTY_API_KEYS };
                             setApiKeys(resetKeys);
-                            localStorage.setItem("debate_api_keys", JSON.stringify(resetKeys));
+                            persistApiKeys(resetKeys);
                           }
                         }}
                         className="text-[9px] font-bold text-red-500/80 hover:text-red-400 uppercase bg-transparent border-none cursor-pointer tracking-wider"
                       >
-                        Effacer toutes les clés localement
+                        Effacer toutes les clés de cette session
                       </button>
                     </div>
                   </div>
@@ -1137,6 +1416,9 @@ export default function AIDebate() {
                     <Scale className="w-3.5 h-3.5 text-[#00f5c4]" />
                     ÉQUILIBRE ET VIBRANCE DU DÉBAT
                   </h3>
+                  <p className="text-[10px] text-gray-600 leading-snug -mt-2 mb-3">
+                    Répartition relative de la parole entre les quatre axes : les quatre jauges totalisent 100 %.
+                  </p>
                   
                   <div className="flex flex-col gap-2">
                     {/* Gauge 1: Rigueur */}
@@ -1289,12 +1571,18 @@ export default function AIDebate() {
 
                 {/* Affichage du Verdict détaillé de la Cour Éthique */}
                 {verdict && (
-                  <VerdictDisplay widgetVerdict={verdict} />
+                  <VerdictDisplay widgetVerdict={verdict} degraded={verdictDegraded} reason={verdictReason} />
                 )}
 
                 {/* Synthèse textuelle */}
                 {summary && (
-                  <SummaryWidget summary={summary} topic={activeTopic} messagesCount={messages.length} />
+                  <SummaryWidget
+                    summary={summary}
+                    topic={activeTopic}
+                    messagesCount={messages.length}
+                    degraded={summaryDegraded}
+                    reason={summaryReason}
+                  />
                 )}
 
                 {isClosed && !closingProgress && (
@@ -1446,12 +1734,22 @@ export default function AIDebate() {
 
                 {/* Verdict détaillé d'archive si présent */}
                 {selectedArchive.verdict && (
-                  <VerdictDisplay widgetVerdict={selectedArchive.verdict} />
+                  <VerdictDisplay
+                    widgetVerdict={selectedArchive.verdict}
+                    degraded={selectedArchive.verdictDegraded}
+                    reason={selectedArchive.verdictReason}
+                  />
                 )}
 
                 {/* Synthèse finale d'archive */}
                 {selectedArchive.summary && (
-                  <SummaryWidget summary={selectedArchive.summary} topic={selectedArchive.topic} messagesCount={selectedArchive.messages.length} />
+                  <SummaryWidget
+                    summary={selectedArchive.summary}
+                    topic={selectedArchive.topic}
+                    messagesCount={selectedArchive.messages.length}
+                    degraded={selectedArchive.summaryDegraded}
+                    reason={selectedArchive.summaryReason}
+                  />
                 )}
 
                 <div className="mt-8 flex flex-col gap-4">
@@ -1610,7 +1908,8 @@ function MessageBubble({ msg, onClap }: { msg: Message; onClap?: () => void; key
           <span className="text-[9px] text-gray-500 font-condensed tracking-wide uppercase">
             {msg.agentRole}
           </span>
-          <span className="text-[10px] text-gray-500 ml-auto">
+          {msg.degraded && <DegradedBadge reason={msg.degradedReason} className="ml-auto" />}
+          <span className={`text-[10px] text-gray-500 ${msg.degraded ? "" : "ml-auto"}`}>
             {msg.time}
           </span>
         </div>
@@ -1619,7 +1918,13 @@ function MessageBubble({ msg, onClap }: { msg: Message; onClap?: () => void; key
           className="bg-[#030303] border border-white/[0.04] rounded-r-lg rounded-bl-sm px-4 py-3 text-xs md:text-sm leading-relaxed relative flex flex-col justify-between" 
           style={{ borderLeft: `3px solid ${msg.agentColor}` }}
         >
-          <p className="text-gray-200 font-sans leading-relaxed whitespace-pre-wrap select-text">{textToShow}</p>
+          <RichText text={textToShow} className="text-gray-200 font-sans leading-relaxed select-text" />
+
+          {msg.degraded && msg.degradedReason && (
+            <p className="text-[10px] text-amber-300/70 leading-snug mt-2 italic">
+              {msg.degradedReason}
+            </p>
+          )}
           
           <div className="flex items-center justify-between gap-4 mt-2 border-t border-white/[0.03] pt-2">
             {isLong ? (
@@ -1643,6 +1948,60 @@ function MessageBubble({ msg, onClap }: { msg: Message; onClap?: () => void; key
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── COMPONENT: RICH TEXT ────────────────────────────────────────────────────
+// Les modèles rédigent en Markdown léger. Ce rendu prend en charge le gras,
+// l'italique et le code court, sans injecter de HTML : les astérisques ne
+// doivent plus apparaître telles quelles à l'écran.
+const INLINE_MARKDOWN = /(\*\*[^*]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
+
+function renderInline(text: string, keyPrefix: string): React.ReactNode[] {
+  return text.split(INLINE_MARKDOWN).filter(Boolean).map((chunk, i) => {
+    const key = `${keyPrefix}-${i}`;
+    if (chunk.startsWith("**") && chunk.endsWith("**") && chunk.length > 4) {
+      return <strong key={key} className="font-bold text-white">{chunk.slice(2, -2)}</strong>;
+    }
+    if (chunk.startsWith("*") && chunk.endsWith("*") && chunk.length > 2) {
+      return <em key={key} className="italic opacity-90">{chunk.slice(1, -1)}</em>;
+    }
+    if (chunk.startsWith("`") && chunk.endsWith("`") && chunk.length > 2) {
+      return (
+        <code key={key} className="font-mono text-[0.9em] bg-white/[0.06] rounded px-1 py-0.5">
+          {chunk.slice(1, -1)}
+        </code>
+      );
+    }
+    return <React.Fragment key={key}>{chunk}</React.Fragment>;
+  });
+}
+
+function RichText({ text, className }: { text: string; className?: string; key?: React.Key }) {
+  const lines = text.split("\n");
+  return (
+    <p className={className}>
+      {lines.map((line, i) => (
+        <React.Fragment key={`l-${i}`}>
+          {i > 0 && <br />}
+          {renderInline(line, `l-${i}`)}
+        </React.Fragment>
+      ))}
+    </p>
+  );
+}
+
+// ─── COMPONENT: DEGRADED BADGE ───────────────────────────────────────────────
+/** Marque explicitement un contenu qui n'est pas issu d'une génération réelle. */
+function DegradedBadge({ reason, className = "" }: { reason?: string; className?: string }) {
+  return (
+    <span
+      title={reason || undefined}
+      className={`inline-flex items-center gap-1 shrink-0 bg-amber-500/10 border border-amber-500/30 text-amber-300 rounded px-1.5 py-0.5 text-[9px] font-condensed font-bold uppercase tracking-wider select-none ${className}`}
+    >
+      <ShieldAlert className="w-2.5 h-2.5" />
+      Secours local
+    </span>
   );
 }
 
@@ -1679,7 +2038,19 @@ function ThinkingBubble({ agentId }: { agentId: string }) {
 }
 
 // ─── COMPONENT: SUMMARY WIDGET ────────────────────────────────────────────────
-function SummaryWidget({ summary, topic, messagesCount }: { summary: string; topic: Topic; messagesCount: number }) {
+function SummaryWidget({
+  summary,
+  topic,
+  messagesCount,
+  degraded,
+  reason,
+}: {
+  summary: string;
+  topic: Topic;
+  messagesCount: number;
+  degraded?: boolean;
+  reason?: string;
+}) {
   const paragraphs = summary.split("\n").filter(p => p.trim());
 
   return (
@@ -1695,10 +2066,20 @@ function SummaryWidget({ summary, topic, messagesCount }: { summary: string; top
             SYNTHÈSE EXÉCUTIVE DES DÉBATS
           </div>
           <div className="text-[10px] text-gray-500 uppercase tracking-widest font-condensed">
-            Rapport critique et synthèse transversale par Gemini-3.5-Flash
+            {degraded
+              ? "Gabarit local — aucune génération réelle"
+              : `Rapport critique et synthèse transversale · ${messagesCount} intervention${messagesCount > 1 ? "s" : ""}`}
           </div>
         </div>
+        {degraded && <DegradedBadge reason={reason} className="ml-auto" />}
       </div>
+
+      {degraded && (
+        <div className="px-5 py-2.5 bg-amber-500/[0.06] border-b border-amber-500/20 text-[11px] text-amber-200 leading-snug">
+          Cette synthèse a été rédigée par le moteur de secours local et ne reflète pas le contenu réel du débat.
+          {reason ? ` ${reason}` : ""}
+        </div>
+      )}
 
       {/* Corps du texte */}
       <div className="px-5 py-5 flex flex-col gap-3">
@@ -1709,17 +2090,20 @@ function SummaryWidget({ summary, topic, messagesCount }: { summary: string; top
           if (isHighlight) {
             return (
               <div key={idx} className="mt-2 p-4 bg-[#00f5c4]/[0.03] border-l-2 border-[#00f5c4] rounded-r-lg relative overflow-hidden">
-                <p className="text-[#00f5c4] font-condensed font-semibold tracking-wide text-xs md:text-sm leading-relaxed relative z-10 select-text">
-                  {cleanedText}
-                </p>
+                <RichText
+                  text={cleanedText}
+                  className="text-[#00f5c4] font-condensed font-semibold tracking-wide text-xs md:text-sm leading-relaxed relative z-10 select-text"
+                />
               </div>
             );
           }
 
           return (
-            <p key={idx} className="text-gray-300 text-xs md:text-sm font-sans leading-relaxed select-text">
-              {cleanedText}
-            </p>
+            <RichText
+              key={idx}
+              text={cleanedText}
+              className="text-gray-300 text-xs md:text-sm font-sans leading-relaxed select-text"
+            />
           );
         })}
       </div>
@@ -1728,7 +2112,15 @@ function SummaryWidget({ summary, topic, messagesCount }: { summary: string; top
 }
 
 // ─── COMPONENT: JURY VERDICT DISPLAY ──────────────────────────────────────────
-function VerdictDisplay({ widgetVerdict }: { widgetVerdict: Verdict }) {
+function VerdictDisplay({
+  widgetVerdict,
+  degraded,
+  reason,
+}: {
+  widgetVerdict: Verdict;
+  degraded?: boolean;
+  reason?: string;
+}) {
   // Traduction propre des id en noms
   const translateAgentName = (id: string) => {
     if (id === "user") return "Humain (Vous)";
@@ -1755,10 +2147,18 @@ function VerdictDisplay({ widgetVerdict }: { widgetVerdict: Verdict }) {
             VERDICT DU JURY SUPRÊME DES MODÈLES
           </div>
           <div className="text-[10px] text-gray-500 uppercase tracking-widest font-condensed mt-0.5">
-            ÉVALUATION CRITIQUE PROTOCOLÉE PAR GEMINI-3.5-FLASH
+            {degraded ? "TIRAGE LOCAL — AUCUNE DÉLIBÉRATION RÉELLE" : "ÉVALUATION CRITIQUE DU COMITÉ DE SAGES"}
           </div>
         </div>
+        {degraded && <DegradedBadge reason={reason} className="ml-auto" />}
       </div>
+
+      {degraded && (
+        <div className="px-5 py-2.5 bg-amber-500/[0.06] border-b border-amber-500/20 text-[11px] text-amber-200 leading-snug">
+          Ce verdict a été tiré par le moteur de secours local : les notes et distinctions ci-dessous ne résultent
+          d'aucune évaluation réelle des arguments.{reason ? ` ${reason}` : ""}
+        </div>
+      )}
 
       {/* Contenu du Verdict */}
       <div className="px-5 py-5 flex flex-col gap-4">
@@ -1770,9 +2170,10 @@ function VerdictDisplay({ widgetVerdict }: { widgetVerdict: Verdict }) {
             <h4 className="font-condensed font-black text-xl tracking-wide leading-none text-white mt-1" style={{ color: translateAgentColor(widgetVerdict.winnerId) }}>
               🏆 {translateAgentName(widgetVerdict.winnerId).toUpperCase()}
             </h4>
-            <p className="text-gray-300 text-xs md:text-sm leading-relaxed mt-2 select-text font-serif italic">
-              "{widgetVerdict.winnerReason}"
-            </p>
+            <RichText
+              text={`"${widgetVerdict.winnerReason}"`}
+              className="text-gray-300 text-xs md:text-sm leading-relaxed mt-2 select-text font-serif italic"
+            />
           </div>
         </div>
 
@@ -1802,17 +2203,19 @@ function VerdictDisplay({ widgetVerdict }: { widgetVerdict: Verdict }) {
           <div className="flex flex-col gap-3 pt-2">
             <div>
               <span className="text-[9px] font-extrabold tracking-widest text-gray-500 font-condensed uppercase block mb-1">DÉLIBÉRATIONS DU CONSEIL</span>
-              <p className="text-gray-300 text-xs md:text-sm leading-relaxed select-text font-sans">
-                {widgetVerdict.critiqueGénérale}
-              </p>
+              <RichText
+                text={widgetVerdict.critiqueGénérale}
+                className="text-gray-300 text-xs md:text-sm leading-relaxed select-text font-sans"
+              />
             </div>
 
             {widgetVerdict.keyCitation && (
               <div className="bg-white/[0.01] border-l-2 border-amber-400 p-3 rounded-r-md mt-1 italic">
                 <span className="text-[8px] font-condensed font-bold tracking-widest text-amber-500 uppercase block mb-1">CITATION PHARE RETENUE PAR LA COUR</span>
-                <p className="text-xs text-amber-300 font-serif leading-relaxed">
-                  "{widgetVerdict.keyCitation}"
-                </p>
+                <RichText
+                  text={`"${widgetVerdict.keyCitation}"`}
+                  className="text-xs text-amber-300 font-serif leading-relaxed"
+                />
               </div>
             )}
           </div>
