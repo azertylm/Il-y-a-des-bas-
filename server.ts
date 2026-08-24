@@ -1,7 +1,6 @@
 import express from "express";
 import path from "path";
 import fs from "fs";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import dotenv from "dotenv";
 import {
@@ -270,7 +269,9 @@ function rateLimitKey(req: express.Request): string {
 }
 
 // ─── ARCHIVES DURABLES, CLOISONNÉES ET ÉCRITES ATOMIQUEMENT ──────────────────
-const ARCHIVES_FILE = path.join(process.cwd(), "archives.json");
+// Surchargeable pour pointer vers un disque persistant : sur la plupart des
+// hébergeurs, le système de fichiers est réinitialisé à chaque déploiement.
+const ARCHIVES_FILE = process.env.ARCHIVES_FILE || path.join(process.cwd(), "archives.json");
 const ARCHIVES_TMP = `${ARCHIVES_FILE}.tmp`;
 const MAX_ARCHIVES_PER_CLIENT = Number(process.env.MAX_ARCHIVES_PER_CLIENT ?? 100);
 
@@ -905,22 +906,41 @@ Réponds uniquement par un objet JSON, sans balise de code, au format exact :
 
 // ─── MONTAGE DE VITE ─────────────────────────────────────────────────────────
 async function startServer() {
-  if (process.env.NODE_ENV !== "production") {
+  const isProduction = process.env.NODE_ENV === "production";
+  const distPath = path.join(process.cwd(), "dist");
+  const distIndex = path.join(distPath, "index.html");
+
+  if (isProduction) {
+    // Échouer bruyamment plutôt que de servir des 404 silencieuses : en
+    // production, l'absence de build est une erreur de déploiement.
+    if (!fs.existsSync(distIndex)) {
+      console.error(
+        `[IADÉBAT SERVER] Build introuvable (${distIndex}). Lancez « npm run build » avant « npm start ».`
+      );
+      process.exit(1);
+    }
+
+    app.use(express.static(distPath));
+    app.get("*", (req, res) => {
+      res.sendFile(distIndex);
+    });
+  } else {
+    // Import paresseux : Vite n'est nécessaire qu'en développement. Le charger
+    // ici permet à l'image de production de s'en passer entièrement.
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    const distPath = path.join(process.cwd(), "dist");
-    app.use(express.static(distPath));
-    app.get("*", (req, res) => {
-      res.sendFile(path.join(distPath, "index.html"));
-    });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[IADÉBAT SERVER] Serveur démarré sur http://localhost:${PORT}`);
+    const mode = isProduction ? "production (build statique)" : "développement (Vite)";
+    console.log(`[IADÉBAT SERVER] Serveur démarré sur http://localhost:${PORT} — mode ${mode}`);
+    if (!process.env.GEMINI_API_KEY) {
+      console.log("[IADÉBAT SERVER] Aucune clé GEMINI_API_KEY : l'application démarre en mode secours local.");
+    }
   });
 }
 

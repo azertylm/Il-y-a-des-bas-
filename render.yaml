@@ -1,0 +1,24 @@
+# Blueprint Render — https://render.com/docs/blueprint-spec
+# Déploiement : Render → New → Blueprint → sélectionner ce dépôt.
+services:
+  - type: web
+    name: iadebat
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "20"
+      # Renseignez la clé dans le tableau de bord Render : elle ne doit jamais
+      # être écrite ici, ce fichier est versionné.
+      - key: GEMINI_API_KEY
+        sync: false
+      # Sans disque persistant, les archives repartent à zéro à chaque
+      # déploiement. Le plan gratuit n'autorise pas les disques : voyez
+      # DEPLOIEMENT.md pour les options.
+      - key: ARCHIVES_FILE
+        value: /tmp/archives.json
