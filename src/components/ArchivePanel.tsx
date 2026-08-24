@@ -1,9 +1,19 @@
-import { ArrowLeft, BookOpen, Clock, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { ArrowLeft, BookOpen, Clock, Download, Search, Trash2, X } from "lucide-react";
 import { fmtDate } from "../lib/time.ts";
+import { archiveToTranscript, downloadTranscript } from "../lib/export.ts";
+import { filterArchives, type ArchiveSort } from "../lib/session.ts";
 import type { Archive } from "../types.ts";
 import { MessageBubble } from "./MessageBubble.tsx";
 import { SummaryWidget } from "./SummaryWidget.tsx";
+import { TreatyDisplay } from "./TreatyDisplay.tsx";
 import { VerdictDisplay } from "./VerdictDisplay.tsx";
+
+const SORT_LABELS: { id: ArchiveSort; label: string }[] = [
+  { id: "recent", label: "Plus récentes" },
+  { id: "ancien", label: "Plus anciennes" },
+  { id: "volume", label: "Plus fournies" },
+];
 
 export interface ArchivePanelProps {
   archives: Archive[];
@@ -19,6 +29,11 @@ export function ArchivePanel({
   setSelectedArchive,
   onDeleteArchive,
 }: ArchivePanelProps) {
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<ArchiveSort>("recent");
+
+  const visible = useMemo(() => filterArchives(archives, query, sort), [archives, query, sort]);
+
   return (
   <div className="flex-1 flex flex-col overflow-hidden py-2 animate-fadeSlideUp">
     
@@ -44,13 +59,21 @@ export function ArchivePanel({
               Session enregistrée le {fmtDate(selectedArchive.closedAt)} · {selectedArchive.messages.length} interventions actives
             </div>
           </div>
-          <div>
+          <div className="flex gap-2 flex-wrap shrink-0 h-fit">
+            <button
+              onClick={() => downloadTranscript(archiveToTranscript(selectedArchive))}
+              title="Télécharger le procès-verbal au format Markdown"
+              className="flex items-center gap-1.5 text-xs text-gray-300 hover:text-white bg-white/[0.04] hover:bg-white/[0.08] border border-white/10 rounded px-3 py-1.5 font-bold font-condensed cursor-pointer uppercase transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Exporter
+            </button>
             <button 
               onClick={() => onDeleteArchive(selectedArchive.key)}
               className="flex items-center gap-1.5 text-xs text-red-500/80 hover:text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/15 rounded px-3 py-1.5 font-bold font-condensed cursor-pointer uppercase transition-colors"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              Effacer cette archive
+              Effacer
             </button>
           </div>
         </div>
@@ -61,6 +84,15 @@ export function ArchivePanel({
             widgetVerdict={selectedArchive.verdict}
             degraded={selectedArchive.verdictDegraded}
             reason={selectedArchive.verdictReason}
+          />
+        )}
+
+        {/* Traité de consensus d'archive */}
+        {selectedArchive.treaty && (
+          <TreatyDisplay
+            treaty={selectedArchive.treaty}
+            degraded={selectedArchive.treatyDegraded}
+            reason={selectedArchive.treatyReason}
           />
         )}
 
@@ -92,21 +124,67 @@ export function ArchivePanel({
             REGISTRE ET PALMARÈS DES SESSIONS PASSÉES
           </div>
           <div className="text-xs text-gray-600">
-            {archives.length} débat{archives.length > 1 ? 's' : ''} répertorié{archives.length > 1 ? 's' : ''}
+            {query
+              ? `${visible.length} sur ${archives.length} débat${archives.length > 1 ? "s" : ""}`
+              : `${archives.length} débat${archives.length > 1 ? "s" : ""} répertorié${archives.length > 1 ? "s" : ""}`}
           </div>
         </div>
 
-        {archives.length === 0 ? (
+        {/* Recherche et tri du registre */}
+        {archives.length > 0 && (
+          <div className="flex flex-col sm:flex-row gap-2 mb-5">
+            <div className="relative flex-1">
+              <Search className="w-3.5 h-3.5 text-gray-600 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Rechercher un sujet, un orateur, un argument…"
+                className="w-full bg-black border border-white/10 rounded pl-8 pr-8 py-1.5 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f5c4]"
+              />
+              {query && (
+                <button
+                  onClick={() => setQuery("")}
+                  title="Effacer la recherche"
+                  className="absolute right-2 top-1/2 -translate-y-1/2 bg-transparent border-none text-gray-600 hover:text-white cursor-pointer p-0 flex items-center"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-3 gap-1 bg-black border border-white/10 rounded p-0.5 shrink-0">
+              {SORT_LABELS.map(option => (
+                <button
+                  key={option.id}
+                  onClick={() => setSort(option.id)}
+                  className={`text-[10px] font-bold py-1 px-2 border-none cursor-pointer rounded transition-all leading-none whitespace-nowrap ${
+                    sort === option.id
+                      ? "bg-white/10 text-white font-black"
+                      : "bg-transparent text-gray-600 hover:text-white"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {visible.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-gray-500">
             <BookOpen className="w-12 h-12 stroke-[1.2] text-gray-600 mb-3" />
-            <div className="font-condensed font-bold text-sm uppercase tracking-widest text-gray-400">Registre d'arène vierge</div>
+            <div className="font-condensed font-bold text-sm uppercase tracking-widest text-gray-400">
+              {query ? "Aucune séance ne correspond" : "Registre d'arène vierge"}
+            </div>
             <p className="text-xs text-gray-600 mt-1 max-w-[280px] text-center leading-relaxed">
-              Aucune thèse de table ronde n'a encore été délibérée et classée avec verdict actif. Lancez dès à présent un débat dans le studio.
+              {query
+                ? `Aucun débat archivé ne mentionne « ${query} ». Essayez un autre terme, ou effacez la recherche.`
+                : "Aucune thèse de table ronde n'a encore été délibérée et classée avec verdict actif. Lancez dès à présent un débat dans le studio."}
             </p>
           </div>
         ) : (
           <div className="flex flex-col gap-4">
-            {archives.map((arc, i) => (
+            {visible.map((arc, i) => (
               <div 
                 key={arc.key} 
                 onClick={() => setSelectedArchive(arc)} 

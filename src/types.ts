@@ -25,6 +25,32 @@ export interface Topic {
   isCustom?: boolean;
 }
 
+export interface FallacyFinding {
+  name: string;
+  quote: string;
+  explanation: string;
+  severity: "faible" | "moyenne" | "forte";
+}
+
+export interface FallacyAnalysis {
+  findings: FallacyFinding[];
+  soundness: number;
+  verdict: string;
+  degraded?: boolean;
+  reason?: string;
+}
+
+export interface TreatyArticle {
+  title: string;
+  content: string;
+}
+
+export interface Treaty {
+  preamble: string;
+  articles: TreatyArticle[];
+  reservation: string;
+}
+
 export interface Archive {
   key: string;
   topic: Topic;
@@ -37,6 +63,9 @@ export interface Archive {
   summaryReason?: string;
   verdictDegraded?: boolean;
   verdictReason?: string;
+  treaty?: Treaty;
+  treatyDegraded?: boolean;
+  treatyReason?: string;
 }
 
 /** Contrat commun à toutes les routes susceptibles de basculer sur le secours local. */

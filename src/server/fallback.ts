@@ -237,3 +237,163 @@ En conclusion historique, ce débat dessine des jalons essentiels pour orienter 
 
 **Au cœur des bouleversements induits par l'évolution de ${kw1}, la plus grande force de l'intelligence réside dans son aptitude constante à cultiver le doute critique et la clarté constructive.**`;
 }
+
+// ─── ANALYSE RHÉTORIQUE DE SECOURS ───────────────────────────────────────────
+// Détection heuristique de sophismes courants en français. Sans modèle
+// distant, on ne « comprend » rien : on repère des marqueurs de surface. Le
+// résultat est donc toujours servi avec `degraded: true`.
+
+export interface FallacyFinding {
+  name: string;
+  quote: string;
+  explanation: string;
+  severity: "faible" | "moyenne" | "forte";
+}
+
+export interface FallacyAnalysis {
+  findings: FallacyFinding[];
+  soundness: number;
+  verdict: string;
+}
+
+const SEVERITY_WEIGHT: { [key: string]: number } = { faible: 6, moyenne: 12, forte: 20 };
+
+const FALLACY_PATTERNS: {
+  name: string;
+  severity: FallacyFinding["severity"];
+  explanation: string;
+  pattern: RegExp;
+}[] = [
+  {
+    name: "Généralisation abusive",
+    severity: "moyenne",
+    explanation:
+      "L'argument étend à la totalité d'un ensemble ce qui n'a été établi que sur quelques cas, sans justifier ce saut.",
+    pattern: /\b(tous les|toutes les|toujours|jamais|aucun|aucune|personne ne|chacun d)\b/i,
+  },
+  {
+    name: "Faux dilemme",
+    severity: "forte",
+    explanation:
+      "Le raisonnement réduit le champ des possibles à deux options opposées alors que d'autres voies existent.",
+    pattern: /\b(soit\b[^.]{5,70}\bsoit\b|ou bien\b[^.]{5,70}\bou bien\b|n'avons plus le choix|pas d'autre choix|il faut choisir entre)/i,
+  },
+  {
+    name: "Pente glissante",
+    severity: "forte",
+    explanation:
+      "Une première mesure est présentée comme entraînant mécaniquement une suite de conséquences extrêmes, sans démontrer aucun de ces enchaînements.",
+    pattern: /\b(inévitablement|fatalement|nécessairement|de proche en proche|c'est la porte ouverte)\b/i,
+  },
+  {
+    name: "Appel à l'autorité",
+    severity: "moyenne",
+    explanation:
+      "La conclusion s'appuie sur le prestige d'une source plutôt que sur le contenu de la preuve avancée.",
+    pattern: /\b(les experts|la science (dit|montre|prouve)|il est prouvé|il est établi|nul ne conteste|chacun sait)\b/i,
+  },
+  {
+    name: "Appel à la peur",
+    severity: "moyenne",
+    explanation:
+      "L'adhésion est recherchée par l'inquiétude suscitée plutôt que par la solidité de la démonstration.",
+    pattern: /\b(catastroph\w+|terrifi\w+|effroi|apocalyp\w+|péril|désastre|menace existentielle|droit dans le mur)\b/i,
+  },
+  {
+    name: "Attaque contre la personne",
+    severity: "forte",
+    explanation:
+      "La thèse adverse est disqualifiée en visant ceux qui la portent au lieu de son contenu.",
+    pattern: /\b(bureaucrates?|technocrates?|apeuré\w*|incompétent\w*|naïf|naïve|naïfs|idéologues?|amiraux de baignoire)\b/i,
+  },
+  {
+    name: "Homme de paille",
+    severity: "forte",
+    explanation:
+      "La position adverse est reformulée sous une version affaiblie, plus commode à réfuter que la thèse réellement défendue.",
+    pattern: /\b(voudraient nous faire croire|prétendent que|sous prétexte que|s'imaginent que|leurs partisans croient)\b/i,
+  },
+  {
+    name: "Appel à la nouveauté",
+    severity: "faible",
+    explanation:
+      "Le caractère récent ou ancien d'une idée est traité comme un argument, alors qu'il ne dit rien de sa validité.",
+    pattern: /\b(dépassé|archaïque|d'un autre âge|rétrograde|calèches à cheval|obsolète)\b/i,
+  },
+];
+
+/** Phrase entière contenant l'expression repérée, tronquée pour l'affichage. */
+function surroundingSentence(text: string, match: string): string {
+  const sentences = text.split(/(?<=[.!?])\s+/);
+  const found = sentences.find(s => s.toLowerCase().includes(match.toLowerCase()));
+  const quote = (found || match).replace(/\*\*/g, "").trim();
+  return quote.length > 220 ? `${quote.slice(0, 220).trimEnd()}…` : quote;
+}
+
+export function generateLocalFallacyAnalysis(content: string, agentName: string): FallacyAnalysis {
+  const findings: FallacyFinding[] = [];
+
+  for (const rule of FALLACY_PATTERNS) {
+    const hit = rule.pattern.exec(content);
+    if (!hit) continue;
+    findings.push({
+      name: rule.name,
+      quote: surroundingSentence(content, hit[0]),
+      explanation: rule.explanation,
+      severity: rule.severity,
+    });
+  }
+
+  const penalty = findings.reduce((sum, f) => sum + (SEVERITY_WEIGHT[f.severity] || 10), 0);
+  const soundness = Math.max(20, 100 - penalty);
+
+  const verdict = findings.length === 0
+    ? `Le relevé automatique n'a repéré aucun marqueur rhétorique classique dans l'intervention de ${agentName}. Cela ne vaut pas certificat de rigueur : seule une lecture attentive peut en juger.`
+    : `Le relevé automatique signale ${findings.length} figure${findings.length > 1 ? "s" : ""} à surveiller dans l'intervention de ${agentName}. Ces marqueurs sont repérés sur la forme des phrases, pas sur le fond de l'argumentation : à vous de trancher.`;
+
+  return { findings, soundness, verdict };
+}
+
+// ─── TRAITÉ DE CONSENSUS DE SECOURS ──────────────────────────────────────────
+export interface TreatyArticle {
+  title: string;
+  content: string;
+}
+
+export interface Treaty {
+  preamble: string;
+  articles: TreatyArticle[];
+  reservation: string;
+}
+
+export function generateLocalTreaty(topicTitle: string): Treaty {
+  // Les gabarits ci-dessous n'insèrent aucun mot-clé extrait du sujet dans une
+  // position grammaticale : le titre est cité tel quel, une seule fois, et les
+  // articles restent autonomes. Un traité de secours doit rester lisible quel
+  // que soit le sujet débattu.
+  const sujet = topicTitle.trim() || "la question soumise à l'arène";
+
+  return {
+    preamble: `Les parties réunies en table ronde sur la question « ${sujet} », considérant l'ampleur des transformations engagées et la diversité des positions exprimées, conviennent des articles suivants comme socle minimal de leur désaccord fécond.`,
+    articles: [
+      {
+        title: "De la primauté de la délibération",
+        content: `Aucune orientation majeure sur cette question ne saurait être arrêtée sans délibération contradictoire préalable, associant les parties concernées et rendue publique.`,
+      },
+      {
+        title: "De la charge de la preuve",
+        content: `Il revient à qui propose une transformation d'en démontrer les bénéfices, et non à qui s'en inquiète d'en démontrer les périls. Cette règle s'applique symétriquement à toutes les parties.`,
+      },
+      {
+        title: "De la réversibilité",
+        content: `Toute mesure engageante doit demeurer révisable. Les parties reconnaissent qu'un dispositif dont on ne peut plus sortir n'est pas un choix mais une contrainte déguisée.`,
+      },
+      {
+        title: "Du bénéficiaire final",
+        content: `Les gains attendus doivent profiter en priorité aux personnes concernées, et leur répartition être rendue vérifiable. Un progrès dont nul ne peut mesurer les effets n'engage personne.`,
+      },
+    ],
+    reservation: `Les parties consignent que leurs désaccords sur les moyens demeurent entiers, et que le présent traité ne les efface pas : il en organise seulement l'expression. Ces articles sont un gabarit générique, non le fruit de la délibération qui vient d'avoir lieu.`,
+  };
+}
+

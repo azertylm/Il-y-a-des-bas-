@@ -4,6 +4,7 @@ import { computeOpinionMetrics } from "../lib/metrics.ts";
 import { excerpt, isAbort } from "../lib/text.ts";
 import { getNextCycleBoundary, getSecondsUntilNextCycle } from "../lib/time.ts";
 import { resolveClientId } from "../lib/storage.ts";
+import { clearSession, loadSession, saveSession } from "../lib/session.ts";
 import type {
   ApiEnvelope,
   Archive,
@@ -11,7 +12,9 @@ import type {
   DebatePhase,
   Message,
   OpinionMetrics,
+  FallacyAnalysis,
   Topic,
+  Treaty,
   Verdict,
 } from "../types.ts";
 
@@ -56,8 +59,21 @@ export function useDebateEngine({
   const [verdictReason, setVerdictReason] = useState("");
   const [opinionMetrics, setOpinionMetrics] = useState<OpinionMetrics>(NEUTRAL_METRICS);
   const [isSubmittingUserContribution, setIsSubmittingUserContribution] = useState(false);
+  const [treaty, setTreaty] = useState<Treaty | null>(null);
+  const [treatyDegraded, setTreatyDegraded] = useState(false);
+  const [treatyReason, setTreatyReason] = useState("");
+  // Analyses rhétoriques, indexées par identifiant de message.
+  const [fallacyAnalyses, setFallacyAnalyses] = useState<{ [msgId: string]: FallacyAnalysis }>({});
+  const [analyzingMessageId, setAnalyzingMessageId] = useState<string | null>(null);
+  // Séance retrouvée en stockage de session et proposée à la reprise.
+  const [restorable] = useState(loadSession);
+  const [restored, setRestored] = useState(false);
 
   const clientId = useRef<string>(resolveClientId()).current;
+  // Lu par les rappels stables, qui ne doivent pas se recréer à chaque
+  // changement de sujet.
+  const activeTopicRef = useRef(activeTopic);
+  activeTopicRef.current = activeTopic;
 
   const getHeaders = useCallback(() => {
     const headers: Record<string, string> = {
@@ -190,6 +206,9 @@ export function useDebateEngine({
     let sumReason = "";
     let judgeDegraded = false;
     let judgeReason = "";
+    let finalTreaty: Treaty | undefined = undefined;
+    let treatyIsDegraded = false;
+    let treatyWhy = "";
 
     try {
       if (currentMessages.length > 0) {
@@ -291,6 +310,40 @@ export function useDebateEngine({
         } catch (e) {
           console.warn("Erreur de parsing du verdict JSON de l'IA Judge, construction d'un repli analytique actif.", e);
         }
+
+        // 3. Rédaction du traité de consensus : ce sur quoi l'arène pourrait
+        //    réellement s'accorder, par-delà les positions défendues.
+        setClosingProgress("Le greffier consigne les articles du traité de consensus...");
+
+        try {
+          const treatyRes = await fetch("/api/debate/treaty", {
+            method: "POST",
+            headers: getHeaders(),
+            signal: controller.signal,
+            body: JSON.stringify({
+              topicTitle: activeTopic.title,
+              topicDescription: activeTopic.description,
+              messages: currentMessages,
+            }),
+          });
+
+          if (treatyRes.ok) {
+            const treatyData: ApiEnvelope & { treaty?: Treaty } = await treatyRes.json();
+            if (treatyData.treaty) {
+              finalTreaty = treatyData.treaty;
+              treatyIsDegraded = Boolean(treatyData.degraded);
+              treatyWhy = treatyData.reason || "";
+              setTreaty(finalTreaty);
+              setTreatyDegraded(treatyIsDegraded);
+              setTreatyReason(treatyWhy);
+            }
+          }
+        } catch (e) {
+          // Le traité est un complément : son absence ne doit pas faire échouer
+          // la clôture, qui porte déjà la synthèse et le verdict.
+          if (isAbort(e)) throw e;
+          console.warn("Traité de consensus indisponible pour cette séance.", e);
+        }
       } else {
         sumText = "Le débat s'est achevé sans aucune plaidoirie de part et d'autre.";
         setSummary(sumText);
@@ -307,9 +360,9 @@ export function useDebateEngine({
       setErrorMessage(e.message || "Erreur de traitement des données de synthèse.");
     }
 
-    if (sumDegraded || judgeDegraded) {
+    if (sumDegraded || judgeDegraded || treatyIsDegraded) {
       setDegradedNotice(
-        "La clôture de séance a été rédigée par le moteur de secours local : ni la synthèse ni le verdict ne proviennent d'une génération réelle."
+        "La clôture de séance a été rédigée par le moteur de secours local : ni la synthèse, ni le verdict, ni le traité ne proviennent d'une génération réelle."
       );
     }
 
@@ -326,6 +379,9 @@ export function useDebateEngine({
       summaryReason: sumReason,
       verdictDegraded: judgeDegraded,
       verdictReason: judgeReason,
+      treaty: finalTreaty,
+      treatyDegraded: treatyIsDegraded,
+      treatyReason: treatyWhy,
     };
 
     try {
@@ -549,6 +605,12 @@ export function useDebateEngine({
     setVerdict(null);
     setVerdictDegraded(false);
     setVerdictReason("");
+    setTreaty(null);
+    setTreatyDegraded(false);
+    setTreatyReason("");
+    setFallacyAnalyses({});
+    setAnalyzingMessageId(null);
+    clearSession();
     setLoadingAgent(null);
     setClosingProgress("");
     closingRef.current = false;
@@ -556,6 +618,41 @@ export function useDebateEngine({
     setErrorMessage(null);
     setDegradedNotice(null);
   };
+
+  /**
+   * Décortique la rhétorique d'une intervention à la demande. Le résultat est
+   * mis en cache par message : une deuxième ouverture du panneau ne relance
+   * pas d'appel.
+   */
+  const handleAnalyzeFallacies = useCallback(async (msg: Message) => {
+    if (fallacyAnalyses[msg.id] || analyzingMessageId) return;
+
+    setAnalyzingMessageId(msg.id);
+    try {
+      const res = await fetch("/api/debate/analyze-fallacy", {
+        method: "POST",
+        headers: getHeaders(),
+        body: JSON.stringify({
+          content: msg.content,
+          agentName: msg.agentName,
+          topicTitle: activeTopicRef.current.title,
+        }),
+      });
+      if (!res.ok) throw new Error("L'analyse rhétorique a échoué.");
+
+      const data: ApiEnvelope & { analysis?: FallacyAnalysis } = await res.json();
+      if (!data.analysis) throw new Error("Analyse rhétorique illisible.");
+
+      setFallacyAnalyses(prev => ({
+        ...prev,
+        [msg.id]: { ...data.analysis!, degraded: Boolean(data.degraded), reason: data.reason || "" },
+      }));
+    } catch (e: any) {
+      if (!isAbort(e)) setErrorMessage(`Analyse rhétorique indisponible : ${e.message}`);
+    } finally {
+      setAnalyzingMessageId(null);
+    }
+  }, [fallacyAnalyses, analyzingMessageId, getHeaders]);
 
   // Référence stable : c'est ce qui permet à `MessageBubble` d'être mémoïsé.
   const handleClapMessage = useCallback((msgId: string) => {
@@ -581,6 +678,48 @@ export function useDebateEngine({
 
   // Enclenchement du Mode de sujet configuré par l'utilisateur
 
+  /** Reprend la séance retrouvée en stockage de session. */
+  const resumeStoredSession = useCallback(() => {
+    if (!restorable) return;
+    setMessages(restorable.messages);
+    setRoundCount(restorable.roundCount);
+    setPhase(restorable.phase);
+    setSummary(restorable.summary);
+    setSummaryDegraded(restorable.summaryDegraded);
+    setSummaryReason(restorable.summaryReason);
+    setVerdict(restorable.verdict);
+    setVerdictDegraded(restorable.verdictDegraded);
+    setVerdictReason(restorable.verdictReason);
+    setTreaty(restorable.treaty);
+    setTreatyDegraded(restorable.treatyDegraded);
+    setTreatyReason(restorable.treatyReason);
+    setRestored(true);
+  }, [restorable]);
+
+  /** Écarte la séance retrouvée sans la reprendre. */
+  const discardStoredSession = useCallback(() => {
+    clearSession();
+    setRestored(true);
+  }, []);
+
+  // Sauvegarde continue : un rechargement accidentel ne doit pas coûter le
+  // tour de table en cours. On n'écrit qu'une fois la reprise arbitrée, pour
+  // ne pas écraser l'instantané avant que l'utilisateur ait choisi.
+  useEffect(() => {
+    if (restorable && !restored) return;
+    saveSession({
+      activeTopic, messages, roundCount, phase,
+      summary, summaryDegraded, summaryReason,
+      verdict, verdictDegraded, verdictReason,
+      treaty, treatyDegraded, treatyReason,
+    });
+  }, [
+    restorable, restored, activeTopic, messages, roundCount, phase,
+    summary, summaryDegraded, summaryReason,
+    verdict, verdictDegraded, verdictReason,
+    treaty, treatyDegraded, treatyReason,
+  ]);
+
   return {
     // état
     messages, phase, loadingAgent, timeLeft, roundCount,
@@ -589,6 +728,10 @@ export function useDebateEngine({
     closingProgress, errorMessage, degradedNotice,
     opinionMetrics, archives, clientId,
     isSubmittingUserContribution,
+    treaty, treatyDegraded, treatyReason,
+    fallacyAnalyses, analyzingMessageId,
+    /** Séance retrouvée au chargement, tant qu'elle n'a été ni reprise ni écartée. */
+    restorableSession: restorable && !restored ? restorable : null,
     isClosed: phase === "closed" || phase === "closing",
 
     // actions
@@ -598,6 +741,9 @@ export function useDebateEngine({
     stopAndSummarize: handleStopAndSummarize,
     reset: handleReset,
     clap: handleClapMessage,
+    analyzeFallacies: handleAnalyzeFallacies,
+    resumeStoredSession,
+    discardStoredSession,
     postUserContribution: handlePostUserContribution,
     deleteArchive: handleDeleteArchive,
     refreshArchives: fetchArchives,

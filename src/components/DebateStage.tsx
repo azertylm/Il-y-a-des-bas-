@@ -1,10 +1,12 @@
 import * as React from "react";
 import { useEffect, useRef } from "react";
 import {
-  CheckCircle, ChevronRight, ListRestart, Pause, Play, RefreshCw, Send, Square,
+  CheckCircle, ChevronRight, Download, History, ListRestart, Pause, Play,
+  RefreshCw, Send, Square, X,
 } from "lucide-react";
 import { AGENTS } from "../constants.ts";
-import type { DebatePhase, Message, Topic, Verdict } from "../types.ts";
+import type { DebatePhase, FallacyAnalysis, Message, Topic, Treaty, Verdict } from "../types.ts";
+import { TreatyDisplay } from "./TreatyDisplay.tsx";
 import { MessageBubble } from "./MessageBubble.tsx";
 import { ThinkingBubble } from "./ThinkingBubble.tsx";
 import { SummaryWidget } from "./SummaryWidget.tsx";
@@ -29,6 +31,20 @@ export interface DebateStageProps {
   verdict: Verdict | null;
   verdictDegraded: boolean;
   verdictReason: string;
+  treaty: Treaty | null;
+  treatyDegraded: boolean;
+  treatyReason: string;
+
+  fallacyAnalyses: { [msgId: string]: FallacyAnalysis };
+  analyzingMessageId: string | null;
+  onAnalyzeFallacies: (msg: Message) => void;
+
+  /** Nombre d'interventions de la séance retrouvée au chargement (0 si aucune). */
+  restorableCount: number;
+  onResumeSession: () => void;
+  onDiscardSession: () => void;
+
+  onExportTranscript: () => void;
 
   userContribution: string;
   setUserContribution: (v: string) => void;
@@ -49,6 +65,10 @@ export function DebateStage({
   messages, phase, isClosed, loadingAgent, roundCount, closingProgress,
   summary, summaryDegraded, summaryReason,
   verdict, verdictDegraded, verdictReason,
+  treaty, treatyDegraded, treatyReason,
+  fallacyAnalyses, analyzingMessageId, onAnalyzeFallacies,
+  restorableCount, onResumeSession, onDiscardSession,
+  onExportTranscript,
   userContribution, setUserContribution, isSubmittingUserContribution,
   onPostUserContribution: handlePostUserContribution,
   onStart: handleStart,
@@ -115,7 +135,35 @@ export function DebateStage({
 
     {/* Flux de messages & Verdict */}
     <div className="flex-1 overflow-y-auto px-1 py-4 flex flex-col gap-4 min-h-0 h-full mt-1">
-      
+
+      {/* Séance retrouvée après un rechargement de page */}
+      {restorableCount > 0 && (
+        <div className="flex items-center gap-3 p-3.5 bg-[#00f5c4]/[0.04] border border-[#00f5c4]/20 rounded-xl animate-fadeSlideUp shrink-0">
+          <History className="w-5 h-5 text-[#00f5c4] shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="font-condensed font-bold text-xs tracking-wider uppercase text-[#00f5c4]">
+              Séance interrompue retrouvée
+            </div>
+            <p className="text-[11px] text-gray-400 leading-snug mt-0.5">
+              {restorableCount} intervention{restorableCount > 1 ? "s" : ""} enregistrée{restorableCount > 1 ? "s" : ""} avant le rechargement de la page.
+            </p>
+          </div>
+          <button
+            onClick={onResumeSession}
+            className="bg-[#00f5c4] hover:bg-[#00e0b0] text-[#050505] border-none font-bold font-condensed tracking-wider text-[10px] px-3 py-1.5 rounded cursor-pointer uppercase shrink-0 transition-colors"
+          >
+            Reprendre
+          </button>
+          <button
+            onClick={onDiscardSession}
+            title="Écarter cette séance"
+            className="bg-transparent border-none text-gray-500 hover:text-white cursor-pointer shrink-0 p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {messages.length === 0 && phase === "idle" && (
         <div className="flex-1 flex flex-col items-center justify-center py-16 text-center max-w-lg mx-auto">
           <div className="flex gap-2.5 mb-5 select-none">
@@ -147,7 +195,14 @@ export function DebateStage({
 
       {/* Bouclage de messages */}
       {messages.map(msg => (
-        <MessageBubble key={msg.id} msg={msg} onClap={onClap} />
+        <MessageBubble
+          key={msg.id}
+          msg={msg}
+          onClap={onClap}
+          analysis={fallacyAnalyses[msg.id]}
+          isAnalyzing={analyzingMessageId === msg.id}
+          onAnalyze={onAnalyzeFallacies}
+        />
       ))}
 
       {/* Indicateur de réflexion */}
@@ -172,6 +227,11 @@ export function DebateStage({
         <VerdictDisplay widgetVerdict={verdict} degraded={verdictDegraded} reason={verdictReason} />
       )}
 
+      {/* Traité de consensus issu de la délibération */}
+      {treaty && (
+        <TreatyDisplay treaty={treaty} degraded={treatyDegraded} reason={treatyReason} />
+      )}
+
       {/* Synthèse textuelle */}
       {summary && (
         <SummaryWidget
@@ -192,12 +252,19 @@ export function DebateStage({
               <p className="text-[11px] text-[#777] leading-relaxed">
                 La table ronde asymétrique a été validée et enregistrée avec succès. Vous pouvez consulter les archives de la session sous l'onglet "Archives" du studio de débat.
               </p>
-              <div className="flex gap-2.5 mt-3">
+              <div className="flex gap-2.5 mt-3 flex-wrap">
                 <button 
                   onClick={handleReset} 
                   className="bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 text-emerald-400 font-condensed font-bold text-[10px] uppercase tracking-wider py-1.5 px-3.5 rounded cursor-pointer transition-colors"
                 >
                   Entamer un nouveau débat
+                </button>
+                <button
+                  onClick={onExportTranscript}
+                  className="flex items-center gap-1.5 bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] text-gray-300 hover:text-white font-condensed font-bold text-[10px] uppercase tracking-wider py-1.5 px-3.5 rounded cursor-pointer transition-colors"
+                >
+                  <Download className="w-3 h-3" />
+                  Exporter le procès-verbal
                 </button>
               </div>
             </div>

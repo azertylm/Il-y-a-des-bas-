@@ -5,6 +5,7 @@ import { Clock, Cpu, ShieldAlert } from "lucide-react";
 import { AGENTS, DEFAULT_TOPICS } from "./constants.ts";
 import { getCurrentTopicIndex, fmtTimer } from "./lib/time.ts";
 import { loadApiKeys, persistApiKeys } from "./lib/storage.ts";
+import { downloadTranscript } from "./lib/export.ts";
 import { useDebateEngine } from "./hooks/useDebateEngine.ts";
 import { ConfigPanel } from "./components/ConfigPanel.tsx";
 import { DebateStage } from "./components/DebateStage.tsx";
@@ -81,8 +82,25 @@ export default function AIDebate() {
     verdict, verdictDegraded, verdictReason,
     closingProgress, errorMessage, degradedNotice,
     opinionMetrics, archives, isClosed, isSubmittingUserContribution,
+    treaty, treatyDegraded, treatyReason,
+    fallacyAnalyses, analyzingMessageId, restorableSession,
     getHeaders, setErrorMessage, setDegradedNotice,
   } = engine;
+
+  /** Télécharge le procès-verbal de la séance affichée. */
+  const handleExportTranscript = () => {
+    downloadTranscript({
+      topic: activeTopic,
+      messages,
+      summary,
+      summaryDegraded,
+      verdict,
+      verdictDegraded,
+      treaty,
+      treatyDegraded,
+      roundCount,
+    });
+  };
 
   const handleKeywordSearch = async () => {
     if (!keyword.trim()) return;
@@ -162,6 +180,12 @@ export default function AIDebate() {
   const handleSubmitUserContribution = (e: React.FormEvent) => {
     e.preventDefault();
     if (engine.postUserContribution(userContribution)) setUserContribution("");
+  };
+
+  /** Reprend la séance retrouvée, sujet compris. */
+  const handleResumeSession = () => {
+    if (restorableSession) setActiveTopic(restorableSession.activeTopic);
+    engine.resumeStoredSession();
   };
 
   const handleDeleteArchive = async (key: string) => {
@@ -318,6 +342,16 @@ export default function AIDebate() {
               verdict={verdict}
               verdictDegraded={verdictDegraded}
               verdictReason={verdictReason}
+              treaty={treaty}
+              treatyDegraded={treatyDegraded}
+              treatyReason={treatyReason}
+              fallacyAnalyses={fallacyAnalyses}
+              analyzingMessageId={analyzingMessageId}
+              onAnalyzeFallacies={engine.analyzeFallacies}
+              restorableCount={restorableSession?.messages.length ?? 0}
+              onResumeSession={handleResumeSession}
+              onDiscardSession={engine.discardStoredSession}
+              onExportTranscript={handleExportTranscript}
               userContribution={userContribution}
               setUserContribution={setUserContribution}
               isSubmittingUserContribution={isSubmittingUserContribution}

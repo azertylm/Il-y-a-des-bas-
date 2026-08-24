@@ -10,6 +10,8 @@ import {
   generateLocalSpeech,
   generateLocalJuryVerdict,
   generateLocalSummary,
+  generateLocalFallacyAnalysis,
+  generateLocalTreaty,
 } from "./src/server/fallback.ts";
 
 dotenv.config();
@@ -39,6 +41,8 @@ const THINKING = {
   summary: ThinkingLevel.MEDIUM,
   jury: ThinkingLevel.HIGH,
   topics: ThinkingLevel.LOW,
+  fallacy: ThinkingLevel.MEDIUM,
+  treaty: ThinkingLevel.HIGH,
 } as const;
 
 // ─── CLASSIFICATION DES ERREURS ──────────────────────────────────────────────
@@ -736,6 +740,165 @@ A la toute fin de ton texte, ajoute un saut de ligne puis ajoute une phrase uniq
   } catch (error: any) {
     const degradation = classifyError(error);
     console.log(`[IADÉBAT SERVER] Synthèse dégradée (${degradation.kind}) : ${degradation.reason}`);
+    return degrade(degradation);
+  }
+});
+
+// ─── ROUTES : ANALYSE RHÉTORIQUE D'UNE INTERVENTION ──────────────────────────
+app.post("/api/debate/analyze-fallacy", async (req, res) => {
+  const { content, agentName, topicTitle } = req.body || {};
+
+  if (typeof content !== "string" || !content.trim()) {
+    return res.status(400).json({ error: "Aucune intervention à analyser." });
+  }
+
+  const speaker = typeof agentName === "string" && agentName ? agentName : "cet orateur";
+
+  const degrade = (degradation: Degradation) =>
+    res.json({
+      analysis: generateLocalFallacyAnalysis(content, speaker),
+      source: "local",
+      degraded: true,
+      kind: degradation.kind,
+      reason: degradation.reason,
+    });
+
+  if (!consumeRateLimit(rateLimitKey(req))) return degrade(THROTTLED);
+
+  const systemPrompt = `Tu es un logicien spécialisé dans l'analyse des raisonnements argumentatifs. Tu identifies les sophismes avec rigueur et sans complaisance, mais sans jamais en inventer : une argumentation solide doit être reconnue comme telle. Tu rédiges en français.`;
+
+  const prompt = `Analyse la rigueur logique de l'intervention suivante, prononcée par ${speaker} dans un débat sur "${topicTitle || "un sujet de société"}".
+
+--- DÉBUT DE L'INTERVENTION ---
+${content}
+--- FIN DE L'INTERVENTION ---
+
+Relève uniquement les sophismes réellement présents. N'en invente aucun : si l'argumentation est saine, renvoie une liste vide. Pour chacun, cite le passage exact concerné, tel qu'il figure dans l'intervention.
+
+Attribue également une note de solidité logique de 0 à 100.
+
+Réponds uniquement par un objet JSON, sans balise de code, au format exact :
+{
+  "findings": [
+    {
+      "name": "Nom du sophisme",
+      "quote": "Passage exact cité depuis l'intervention",
+      "explanation": "Pourquoi ce passage constitue ce sophisme, en une ou deux phrases.",
+      "severity": "faible"
+    }
+  ],
+  "soundness": 75,
+  "verdict": "Appréciation d'ensemble en deux phrases."
+}
+
+Le champ "severity" vaut obligatoirement "faible", "moyenne" ou "forte".`;
+
+  try {
+    const raw = await withRetry("analyse rhétorique", () =>
+      callGemini({
+        customKey: header(req, "x-gemini-api-key"),
+        systemPrompt,
+        prompt,
+        thinkingLevel: THINKING.fallacy,
+        jsonOutput: true,
+      })
+    );
+
+    const parsed = JSON.parse(stripCodeFence(raw));
+    if (!parsed || !Array.isArray(parsed.findings)) {
+      throw new Error("Le modèle n'a pas renvoyé d'analyse exploitable.");
+    }
+
+    return res.json({
+      analysis: {
+        findings: parsed.findings,
+        soundness: typeof parsed.soundness === "number" ? parsed.soundness : 50,
+        verdict: parsed.verdict || "",
+      },
+      source: "remote",
+      degraded: false,
+      ...OK,
+    });
+  } catch (error: any) {
+    const degradation = classifyError(error);
+    console.log(`[IADÉBAT SERVER] Analyse rhétorique dégradée (${degradation.kind}) : ${degradation.reason}`);
+    return degrade(degradation);
+  }
+});
+
+// ─── ROUTES : TRAITÉ DE CONSENSUS ────────────────────────────────────────────
+app.post("/api/debate/treaty", async (req, res) => {
+  const { topicTitle, topicDescription, messages } = req.body || {};
+
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return res.status(400).json({ error: "Aucune contribution à consigner dans un traité." });
+  }
+
+  const degrade = (degradation: Degradation) =>
+    res.json({
+      treaty: generateLocalTreaty(topicTitle || ""),
+      source: "local",
+      degraded: true,
+      kind: degradation.kind,
+      reason: degradation.reason,
+    });
+
+  if (!consumeRateLimit(rateLimitKey(req))) return degrade(THROTTLED);
+
+  const transcript = messages
+    .map((m: any) => `[${m.agentName} — ${m.agentRole}]\n${m.content}`)
+    .join("\n\n---\n\n");
+
+  const systemPrompt = `Tu es le greffier d'une assemblée délibérante. Tu rédiges des traités sobres, précis et engageants, dans une langue juridique française claire et sans jargon inutile. Tu ne prends parti pour aucune des thèses en présence.`;
+
+  const prompt = `Voici la transcription d'une table ronde sur le sujet :
+"${topicTitle}" (${topicDescription || ""})
+
+Transcription des contributions :
+${transcript}
+
+Rédige le traité de consensus qui découle de ce débat : non pas un résumé des positions, mais les engagements minimaux sur lesquels ces participants pourraient reellement s'accorder malgré leurs désaccords.
+
+Rédige entre 3 et 5 articles. Chaque article porte un titre court commençant par « De… » ou « Du… », et un contenu d'une à trois phrases formulées comme des engagements.
+
+Consigne honnêtement, dans le champ "reservation", ce sur quoi le désaccord demeure entier. Ne fais pas semblant d'un accord qui n'existe pas.
+
+Réponds uniquement par un objet JSON, sans balise de code, au format exact :
+{
+  "preamble": "Préambule d'une à trois phrases.",
+  "articles": [ { "title": "De la…", "content": "Engagement…" } ],
+  "reservation": "Ce qui reste en litige."
+}`;
+
+  try {
+    const raw = await withRetry("traité de consensus", () =>
+      callGemini({
+        customKey: header(req, "x-gemini-api-key"),
+        systemPrompt,
+        prompt,
+        thinkingLevel: THINKING.treaty,
+        jsonOutput: true,
+      })
+    );
+
+    const parsed = JSON.parse(stripCodeFence(raw));
+    if (!parsed || !Array.isArray(parsed.articles) || parsed.articles.length === 0) {
+      throw new Error("Le modèle n'a pas renvoyé de traité exploitable.");
+    }
+
+    return res.json({
+      treaty: {
+        preamble: parsed.preamble || "",
+        articles: parsed.articles,
+        reservation: parsed.reservation || "",
+      },
+      source: "remote",
+      degraded: false,
+      ...OK,
+    });
+  } catch (error: any) {
+    const degradation = classifyError(error);
+    console.log(`[IADÉBAT SERVER] Traité dégradé (${degradation.kind}) : ${degradation.reason}`);
     return degrade(degradation);
   }
 });

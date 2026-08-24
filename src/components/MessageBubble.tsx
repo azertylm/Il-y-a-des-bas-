@@ -1,19 +1,26 @@
 import * as React from "react";
 import { useState } from "react";
-import { ThumbsUp } from "lucide-react";
-import type { Message } from "../types.ts";
+import { Scale, ThumbsUp } from "lucide-react";
+import type { FallacyAnalysis, Message } from "../types.ts";
 import { RichText } from "./RichText.tsx";
 import { DegradedBadge } from "./DegradedBadge.tsx";
+import { FallacyPanel } from "./FallacyPanel.tsx";
 
 interface MessageBubbleProps {
   msg: Message;
   /** Reçoit l'identifiant du message : la référence reste ainsi stable d'un rendu à l'autre. */
   onClap?: (msgId: string) => void;
+  /** Analyse déjà obtenue pour ce message, le cas échéant. */
+  analysis?: FallacyAnalysis;
+  /** Vrai pendant que l'analyse de ce message est en cours. */
+  isAnalyzing?: boolean;
+  onAnalyze?: (msg: Message) => void;
 }
 
 // ─── COMPONENT: MESSAGE BUBBLE ───────────────────────────────────────────────
-function MessageBubbleBase({ msg, onClap }: MessageBubbleProps) {
+function MessageBubbleBase({ msg, onClap, analysis, isAnalyzing, onAnalyze }: MessageBubbleProps) {
   const [expanded, setExpanded] = useState(true);
+  const [showAnalysis, setShowAnalysis] = useState(false);
   const isLong = msg.content.length > 550;
   const textToShow = !expanded ? msg.content.slice(0, 400) + "…" : msg.content;
 
@@ -67,14 +74,39 @@ function MessageBubbleBase({ msg, onClap }: MessageBubbleProps) {
               </button>
             ) : <span />}
 
-            <button 
-              onClick={() => onClap?.(msg.id)}
-              className="bg-white/5 hover:bg-white/10 text-gray-400 hover:text-yellow-400 border border-white/5 rounded-full px-2 py-0.5 text-[9px] md:text-[10px] font-condensed uppercase font-bold tracking-wider cursor-pointer flex items-center gap-1.5 transition-all select-none"
-            >
-              <ThumbsUp className="w-3 h-3 fill-current" />
-              <span>Soutenir {msg.claps ? `(${msg.claps})` : ""}</span>
-            </button>
+            <div className="flex items-center gap-1.5 ml-auto shrink-0">
+              {onAnalyze && !msg.isUser && (
+                <button
+                  onClick={() => {
+                    setShowAnalysis(v => !v);
+                    if (!analysis) onAnalyze(msg);
+                  }}
+                  disabled={isAnalyzing}
+                  title="Repérer les figures rhétoriques de cette intervention"
+                  className="bg-white/5 hover:bg-white/10 text-gray-400 hover:text-[#00f5c4] border border-white/5 rounded-full px-2 py-0.5 text-[9px] md:text-[10px] font-condensed uppercase font-bold tracking-wider cursor-pointer flex items-center gap-1.5 transition-all select-none disabled:opacity-50"
+                >
+                  <Scale className="w-3 h-3" />
+                  <span>
+                    {isAnalyzing
+                      ? "Analyse…"
+                      : analysis
+                        ? `${showAnalysis ? "Masquer" : "Voir"} le relevé${analysis.findings.length ? ` (${analysis.findings.length})` : ""}`
+                        : "Décortiquer"}
+                  </span>
+                </button>
+              )}
+
+              <button
+                onClick={() => onClap?.(msg.id)}
+                className="bg-white/5 hover:bg-white/10 text-gray-400 hover:text-yellow-400 border border-white/5 rounded-full px-2 py-0.5 text-[9px] md:text-[10px] font-condensed uppercase font-bold tracking-wider cursor-pointer flex items-center gap-1.5 transition-all select-none"
+              >
+                <ThumbsUp className="w-3 h-3 fill-current" />
+                <span>Soutenir {msg.claps ? `(${msg.claps})` : ""}</span>
+              </button>
+            </div>
           </div>
+
+          {showAnalysis && analysis && <FallacyPanel analysis={analysis} />}
         </div>
       </div>
     </div>
