@@ -92,8 +92,10 @@ export function transcriptFilename(topic: Topic, closedAt?: string): string {
     .toLowerCase()
     .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60) || "debat";
+    .slice(0, 60)
+    // Le nettoyage des tirets vient après la coupe : sinon une troncature au
+    // milieu d'un séparateur laisse un nom de fichier en « …-mot-.md ».
+    .replace(/^-+|-+$/g, "") || "debat";
   const day = (closedAt ? new Date(closedAt) : new Date()).toISOString().slice(0, 10);
   return `iadebat-${day}-${slug}.md`;
 }

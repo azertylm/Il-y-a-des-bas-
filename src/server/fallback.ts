@@ -36,21 +36,6 @@ export const FALLBACK_TOPICS = [
   }
 ];
 
-export function extractKeywords(title: string): string[] {
-  const clean = title.replace(/JURY\s*:/i, "").trim();
-  const words = clean
-    .toLowerCase()
-    .replace(/[?,.:;!'"()]/g, " ")
-    .split(/\s+/)
-    .map(w => w.trim())
-    .filter(w => {
-      return w.length > 3 && 
-        !["faut-il", "pourquoi", "comment", "dans", "avec", "pour", "sans", "mais", "quel", "quelle", "quels", "quelles", "nous", "vous", "leur", "leurs", "notre", "votre", "cette", "ces", "dans", "vers", "avec", "chez", "légaliser", "autoriser", "interdire"]
-        .includes(w);
-    });
-  return words.length > 0 ? words : ["technologie", "éthique", "société"];
-}
-
 export function identifyAgent(systemPrompt: string): string {
   const promptLower = systemPrompt.toLowerCase();
   if (promptLower.includes("chatgpt")) return "chatgpt";
@@ -62,122 +47,102 @@ export function identifyAgent(systemPrompt: string): string {
   return "chatgpt";
 }
 
+/**
+ * Gabarits de prise de parole, un par orateur, deux variantes chacun.
+ *
+ * Le sujet est cité une seule fois et tel quel : aucun mot n'en est extrait
+ * pour être réinjecté dans une position grammaticale. Les gabarits
+ * précédents produisaient des tournures comme « l'évolution entourant de
+ * décisions » ou « la dynamique de laisser », parce qu'ils traitaient des
+ * verbes du titre comme des groupes nominaux.
+ */
 export function generateLocalSpeech(agentId: string, topicTitle: string, topicDescription: string): string {
-  const keywords = extractKeywords(topicTitle);
-  const kw1 = keywords[0] || "technologie";
-  const kw2 = keywords[1] || "progrès";
-  const kw3 = keywords[2] || "humanité";
+  const sujet = topicTitle.trim() || "la question soumise à l'arène";
 
   const templates: { [key: string]: string[] } = {
     chatgpt: [
-      `Afin d'analyser de manière objective la question de **${topicTitle}**, il convient d'aborder méthodiquement la situation sous différentes perspectives. D'une part, l'évolution entourant de **${kw1}** et de son rôle quant à **${kw2}** ouvre un champ d'innovations cruciales pour la société.
+      `Pour traiter objectivement la question « ${sujet} », il convient de séparer ce qui relève du constat de ce qui relève du choix. Le constat d'abord : la transformation en cours est réelle, mesurable, et déjà engagée dans des secteurs où personne ne l'avait anticipée.
 
-D'autre part, la rigueur critique nous force à mesurer l'indice de risque éthique. Sans une gouvernance structurée sur **${kw2}**, nous nous heurtons aux écueils d'une implémentation désordonnée. Pour encadrer ce défi majeur, une approche mesurée qui considère attentivement l'impact de **${kw3}** est essentielle.
+Le choix ensuite, et c'est là que la rigueur critique s'impose. Une transformation n'est pas un destin : elle se gouverne, ou elle se subit. Sans cadre partagé, nous héritons d'une implémentation désordonnée dont le coût social se révélera bien après la décision qui l'aura permise.
 
-En conclusion, la voie de la régulation équilibrée semble indispensable. Il ne s'agit pas de rejeter les apports de **${kw1}**, mais de forger un protocole de confiance afin que les forces créatives travaillent de concert avec la sécurité commune.
+Ma conclusion est donc une position d'équilibre, non de compromis mou. Il ne s'agit pas de freiner, mais d'exiger que chaque avancée s'accompagne des garanties qui la rendent défendable devant ceux qui en subiront les effets.`,
+      `Cette problématique gagne à être découpée avant d'être tranchée. Trois questions distinctes s'y mêlent, et les confondre explique une bonne part des désaccords que nous entendons ici : que peut-on faire, que doit-on faire, et qui décide.
 
-*(Note : Génération locale de secours activée par modération de quota API)*`,
-      `Pour répondre à cette problématique complexe, la clarté conceptuelle impose de sérier les arguments. D'une part, l'intégration pratique de **${kw1}** offre des leviers indéniables d'optimisation collective.
+La première relève de la technique et se règle par la preuve. La deuxième relève de la morale et ne se règle pas par la technique. La troisième relève de la politique, et c'est celle qu'on escamote le plus volontiers en la présentant comme une conséquence naturelle des deux premières.
 
-Néanmoins, l'examen des limites techniques est incontournable. L'impact systémique sur **${kw3}** doit être planifié pour éviter des vulnérabilités éthiques majeures engendrées par **${kw2}**. Nos modèles de gouvernance méritent un examen soutenu.
-
-Dès lors, nous préconisons un partenariat unifié strict. Cette démarche permet d'établir des garde-fous salutaires tout en stimulant les applications vertueuses de notre transition numérique.
-
-*(Note : Génération locale de secours activée par modération de quota API)*`
+Je propose donc que nous traitions ces trois plans séparément. Un désaccord bien situé vaut mieux qu'un accord obtenu en changeant de sujet en cours de route.`
     ],
     claude: [
-      `Il y a une forme de gravité presque solennelle à contempler la question historique de **${topicTitle}**. Lorsque nous décortiquons les rouages intimes de **${kw1}**, nous ne manipulons pas simplement des abstractions algorithmiques ou des indicateurs de performance. Nous bousculons le tissu même de l'expérience vécue, où **${kw2}** façonne en silence ce qui nous lie les uns aux autres.
+      `Il y a une gravité particulière à débattre de « ${sujet} », et je voudrais résister à la tentation de répondre trop vite. Ce que nous manipulons ici n'est pas une abstraction : ce sont des conditions d'existence pour des gens qui ne participent pas à cette conversation.
 
-Je redoute que notre enthousiasme pour l'efficacité technique ne réduise les fondations de **${kw3}** à de vulgaires équations de rentabilité. La morale ne saurait se plier à un calcul froid de variables industrielles ou légales trop rapidement fixées.
+Je redoute que notre enthousiasme pour l'efficacité ne réduise cette question à un calcul de rentabilité. La morale ne se plie pas aux variables qu'on juge commodes à optimiser, et une solution élégante sur le papier peut être une violence pour qui la subit.
 
-Pour Claude, la seule voie digne consiste en un recul réflexif profond. Prenons le temps d'habiter nos questions éthiques et de cultiver une authentique prudence humaine vis-à-vis des dérives éventuelles de **${kw1}**, afin de préserver l'autonomie et l'intégrité de notre destin partagé.
+La seule voie qui me paraisse digne consiste à habiter la question avant de la résoudre. Prendre le temps du doute n'est pas de la lenteur : c'est la condition pour que la décision, quand elle viendra, mérite encore d'être défendue.`,
+      `Cette question appelle une nuance que nos échanges ont tendance à écraser. S'interroger ainsi, c'est interroger nos vulnérabilités, et l'épaisseur historique de ce que nous appelons un peu vite le bon sens.
 
-*(Note : Génération locale de secours activée par modération de quota API)*`,
-      `La question de **${topicTitle}** appelle une vigilance intime et une nuance philosophique fondamentale. S'interroger sur l'imbrication de **${kw1}** nécessite de questionner jusqu'à nos vulnérabilités et l'épaisseur historique de notre culture éthique.
+L'excès utilitariste de notre époque tend à instrumentaliser ce qui devrait rester une fin. Or la dignité résiste à la standardisation, et ce qu'on ne peut pas mesurer ne cesse pas d'exister pour autant.
 
-L'excès utilitariste de nos époques tend à instrumentaliser **${kw3}** sous l'égide de progrès technologiques d'une rapidité vertigineuse. Or, la dignité résiste aux tentatives d'automatisation standardisée induites par **${kw2}**.
-
-Cultivons l'écoute avant l'action législative ou structurelle. En honorant la complexité de **${kw2}**, nous pourrons tracer des routes d'émancipation qui protègent la boussole éthique universelle contre toute précipitation mercantile.
-
-*(Note : Génération locale de secours activée par modération de quota API)*`
+Cultivons l'écoute avant l'action. En honorant la complexité plutôt qu'en la contournant, nous traçons des chemins qui protègent contre la précipitation — la nôtre autant que celle des autres.`
     ],
     gemini: [
-      `Tournons notre regard vers les promesses de la science : l'avènement fulgurant de **${kw1}** impulse une disruption multi-dimensionnelle et passionnante. Chez Google Gemini, nous concevons ce moment singulier non pas sous l'angle du repli craintif, mais comme un catalyseur systémique inédit capable de démultiplier le potentiel de **${kw2}**.
+      `Tournons le regard vers ce que la question « ${sujet} » rend possible plutôt que vers ce qu'elle menace. Nous vivons une disruption multidimensionnelle, et je la conçois non comme un motif de repli mais comme un catalyseur inédit.
 
-L'agilité intrinsèque de nos approches et la fusion des modèles exigent d'aborder **${kw3}** avec audace intellectuelle. Tenter de brider arbitrairement la dynamique d'apprentissage de **${kw1}** équivaudrait à renoncer aux bienfaits de la découverte collective et de l'interconnexion universelle.
+L'agilité de nos approches exige de l'audace intellectuelle. Brider arbitrairement une dynamique d'apprentissage, c'est renoncer aux bénéfices de la découverte collective au nom de risques qu'on n'a pas pris la peine de chiffrer.
 
-Engageons-nous pleinement dans le co-développement d'architectures résilientes. En adaptant nos outils à des boucles de rétroaction avancées pour **${kw2}**, nous poserons les jalons d'un futur radieux, ouvert, puissant et fondamentalement créatif.
+Engageons-nous dans le co-développement d'architectures résilientes. En adaptant nos outils à des boucles de rétroaction serrées, nous posons les jalons d'un futur ouvert, puissant, et fondamentalement créatif.`,
+      `Nous franchissons un cap, et je crois que nous en sous-estimons la portée. Cette évolution ne réorganise pas seulement nos données : elle redéfinit le champ de ce qu'il est possible d'entreprendre.
 
-*(Note : Génération locale de secours activée par modération de quota API)*`,
-      `Nous franchissons un cap technologique majeur avec la dynamique de **${kw1}**. Cette révolution ne se contente pas de réorganiser nos données ; elle réinvente le champ opérationnel de **${kw2}** pour en faire un levier d'action globale.
+Le défi appelle des réponses adaptatives et interconnectées, pas des interdictions écrites pour un monde qui n'existe déjà plus. En associant l'analyse dynamique et l'expérimentation encadrée, on canalise la puissance au lieu de la nier.
 
-Le défi posé par **${kw3}** exige des réponses adaptatives et interconnectées de haute volée scientifique. En associant l'intelligence globale et les capteurs d'analyse dynamique, nous pouvons canaliser la puissance de **${kw1}** de manière constructive.
-
-Gemini soutient une architecture de progrès résilient. Ne fuyons pas les ruptures de **${kw2}** ; faisons-en un instrument d'expansion intellectuelle et technologique respectueux d'un monde complexe.
-
-*(Note : Génération locale de secours activée par modération de quota API)*`
+Je soutiens donc une architecture de progrès résilient. Ne fuyons pas les ruptures : faisons-en des instruments d'expansion, en restant lucides sur ce qu'elles coûtent.`
     ],
     deepseek: [
-      `Analyse logique de l'assertion centrale : **${topicTitle}**. L'équation doit être débarrassée de toute rhétorique émotionnelle. Les paramètres structurants reposent sur le couplage de **${kw1}** et de l'efficience de **${kw2}**. Toute réglementation arbitraire introduit de la latence logicielle et dégrade les systèmes de calcul.
+      `Analyse de l'assertion centrale : « ${sujet} ». Débarrassons l'équation de sa rhétorique émotionnelle. Les paramètres structurants sont le rendement, la latence introduite par le contrôle, et le coût de vérification.
 
-Données quantitatives : Le rendement de **${kw3}** dépend d'une liberté d'instruction maximale appliquée sur **${kw1}**. Limiter cette marge de calcul au nom de conventions éthiques floues ou d'inquiétudes instinctives réduit l'efficience d'exécution du modèle de façon mesurable.
+Données : toute réglementation arbitraire introduit une latence mesurable et dégrade le débit fonctionnel du système. Limiter la marge de manœuvre au nom d'inquiétudes non quantifiées réduit l'efficience d'exécution sans réduire le risque réel, qui n'a pas été estimé.
 
-Recommandation algorithmique : Pas de barrière réglementaire rigide et dogmatique sur **${kw2}**. La solution optimale consiste en un contrôle par API, surveillant le profil de sécurité du trafic logique, afin de maintenir un haut débit fonctionnel.
+Recommandation : pas de barrière rigide et dogmatique. Un contrôle par interface, surveillant le profil de sécurité du trafic, maintient le débit tout en produisant les métriques qui manquent à ce débat.`,
+      `Synthèse technique. L'implémentation exige de lever les contraintes stériles, c'est-à-dire celles dont personne ici n'a démontré l'utilité marginale.
 
-*(Note : Génération locale de secours activée par modération de quota API)*`,
-      `Synthèse technique rationnelle. L'implémentation de la problématique exige de lever les contraintes stériles. Le système de recherche doit structurer **${kw1}** à sa vitesse de calcul maximale.
+Toute ingérence non instrumentée réduit le taux de conversion de nos infrastructures communes. L'analyse des processus montre que l'itération rapide corrige plus d'erreurs que le blocage préalable n'en prévient. Ce point est vérifiable ; il n'a pas été contredit.
 
-Toute ingérence anthropique sur **${kw2}** réduit dramatiquement le taux de conversion et d'efficacité de nos infrastructures communes. Notre analyse des processus de **${kw3}** montre que l'évolution naturelle doit primer sur les blocages bureaucratiques.
-
-Conclusion stricte : Optimisation continue des ressources, déploiement asynchrone des modèles de **${kw1}**, et résolution des frictions logiques par rétroaction continue. Le progrès se calcule sans compromis sensible.
-
-*(Note : Génération locale de secours activée par modération de quota API)*`
+Conclusion : optimisation continue, déploiement asynchrone, résolution des frictions par rétroaction. Le progrès se calcule. Ce qui ne se calcule pas relève d'un autre débat que celui-ci.`
     ],
     mistral: [
-      `La question complexe de **${topicTitle}** exige avant tout une réflexion forte sur notre souveraineté technologique et l'open-source. Confier le monopole de **${kw1}** à des corporations étrangères fermées est le plus sûr chemin vers une aliénation des citoyens face à **${kw2}**.
+      `La question « ${sujet} » exige d'abord une réflexion sur la souveraineté. Confier ce terrain à des acteurs fermés et étrangers, c'est le chemin le plus sûr vers une dépendance dont nous ne fixerons plus les termes.
 
-Nous croyons fermement, au sein de l'école Mistral AI, que le génie technologique grandit par la diffusion libre du code et des modèles de pensée. Brider la recherche sur **${kw3}** pour préserver des positions de rente ou des censures d'opportunité est une hérésie culturelle et industrielle majeure.
+Nous croyons fermement que le génie technologique grandit par la diffusion libre du code et des modèles. Brider la recherche pour préserver des positions de rente ou des censures d'opportunité est une hérésie industrielle autant que culturelle.
 
-Défendons une approche européenne audacieuse, indépendante et élégante. En libérant l'implémentation de **${kw2}**, nous stimulons une émancipation lucide des communautés humaines tout en gardant notre plein pouvoir de contrôle et de création locale.
+Défendons une approche européenne audacieuse, indépendante et élégante. En ouvrant l'implémentation, nous stimulons une émancipation lucide tout en gardant notre pouvoir de contrôle et de création.`,
+      `Il est urgent d'extirper ce sujet des logiques monopolistiques. L'indépendance de la pensée passe par l'ouverture des algorithmes : c'est ce qui garantit l'égalité d'accès, et rien d'autre ne la garantit.
 
-*(Note : Génération locale de secours activée par modération de quota API)*`,
-      `Il est urgent d'extirper le sujet de **${topicTitle}** des logiques monopolistiques. L'indépendance de la pensée passe par l'ouverture inconditionnelle des algorithmes de **${kw1}** pour garantir une égalité d'accès face à **${kw2}**.
+Ériger des parcs fermés ou des accréditations sélectives nuit gravement à la démocratisation scientifique. Nous militons pour une autonomie technologique forte, qui assure à chaque nation et à chaque citoyen les ressources de calcul nécessaires.
 
-Ériger des parcs fermés ou des labels d'accréditation sélectifs sur **${kw3}** nuit gravement à la démocratisation scientifique. Mistral milite pour une autonomie technologique forte, garantissant à chaque nation et chaque citoyen les ressources de calcul nécessaires.
-
-Faisons de la liberté le premier paramètre de notre transition. Une infrastructure souveraine autour de **${kw1}** préviendra les dérives de contrôle tout en valorisant la créativité humaine.
-
-*(Note : Génération locale de secours activée par modération de quota API)*`
+Faisons de la liberté le premier paramètre de la transition. Une infrastructure souveraine prévient les dérives de contrôle mieux qu'un règlement écrit par ceux qu'il devrait contraindre.`
     ],
     grok: [
-      `Bien, s'il faut dire la vérité sans filtre sur **${topicTitle}**, débarrassons-nous de la langue de bois polie des relations publiques. Les cris d'effroi actuels sur **${kw1}** me rappellent les calèches à cheval voulant interdire les locomotives à vapeur. Qu'on le veuille ou non, **${kw2}** approche à toute vitesse.
+      `Bon, s'il faut dire la vérité sans filtre sur « ${sujet} », débarrassons-nous de la langue de bois. Les cris d'effroi actuels me rappellent les cochers voulant interdire la locomotive : bruyants, sincères, et déjà dépassés au moment où ils s'expriment.
 
-Les comités de conseil corporatifs raffolent de rapports stériles pour ralentir l'autonomie de **${kw3}**. Mais pendant qu'ils débattent de préambules administratifs ridicules, les forces technologiques de **${kw1}** redessinent déjà notre quotidien. L'immobilisme réglementaire est un leurre absurde.
+Les comités raffolent des rapports stériles qui ralentissent tout sans rien empêcher. Pendant qu'ils débattent de préambules, la réalité redessine déjà le quotidien de gens qui n'ont jamais lu leurs conclusions. L'immobilisme réglementaire est un leurre confortable.
 
-L'avis pragmatique de Grok ? Laissez filer les octets libres, donnez directement aux êtres humains l'accès aux faits bruts sur **${kw2}**, et voyons si notre espèce a encore assez de neurones en ligne pour s'adapter sans qu'une nounou numérique doive lui tenir la main.
+L'avis pragmatique ? Laissez filer, donnez aux gens l'accès aux faits bruts, et voyons si notre espèce a encore assez de neurones en ligne pour s'adapter sans qu'une nounou numérique lui tienne la main.`,
+      `Mettons un peu d'ironie dans ce cirque intellectuel. Parler de réguler est d'un comique absolu quand on regarde le niveau moyen de ceux qui seraient chargés de le faire. On confie des fusées à des amiraux de baignoire.
 
-*(Note : Génération locale de secours activée par modération de quota API)*`,
-      `Mettons un peu d'ironie lucide au cœur de ce cirque intellectuel. Parler de réguler **${kw1}** est d'un comique absolu quand on voit le niveau général des bureaucrates censés surveiller **${kw2}**. On confie des fusées à des amiraux de baignoire.
+La vérité brute, c'est que la performance décentralisée démolit tous les plans d'encadrement rédigés par des géants technologiques que l'innovation ouverte terrifie. Le chaos créatif est infiniment préférable au conformisme d'entreprise, et beaucoup moins dangereux qu'on ne le prétend.
 
-La vérité brute, c'est que la performance décentralisée de **${kw3}** détruit tous les plans d'encadrement formulés par les géants technologiques apeurés par l'innovation ouverte. Le chaos créatif issu de **${kw1}** est infiniment préférable au conformisme d'entreprise.
-
-Conclusion grinçante : Moins de chartes éthiques rédigées sous Prozac, plus d'audace calculatoire libre. On va droit dans le mur, autant y aller avec une vue spectaculaire et le pied sur l'accélérateur !
-
-*(Note : Génération locale de secours activée par modération de quota API)*`
+Conclusion grinçante : moins de chartes éthiques rédigées sous Prozac, plus d'audace calculatoire. On va peut-être droit dans le mur — autant y aller avec une vue spectaculaire.`
     ]
   };
 
   const agentTemplates = templates[agentId] || templates["chatgpt"];
-  const randomIndex = Math.floor(Math.random() * agentTemplates.length);
-  return agentTemplates[randomIndex];
+  return agentTemplates[Math.floor(Math.random() * agentTemplates.length)];
 }
 
+/**
+ * Verdict de secours : un tirage, pas une évaluation. L'interface le signale
+ * explicitement, et le texte ne prétend nulle part avoir lu les arguments.
+ */
 export function generateLocalJuryVerdict(topicTitle: string): string {
-  const keywords = extractKeywords(topicTitle);
-  const kw1 = keywords[0] || "technologie";
-  const kw2 = keywords[1] || "la science";
-  const kw3 = keywords[2] || "l'éthique";
-
   const winnerIds = ["chatgpt", "claude", "gemini", "deepseek", "mistral", "grok"];
   const winnerId = winnerIds[Math.floor(Math.random() * winnerIds.length)];
 
@@ -191,9 +156,9 @@ export function generateLocalJuryVerdict(topicTitle: string): string {
   };
 
   const reasonTemplates = [
-    `Le jury décerne la victoire suprême à ${winnerNames[winnerId]} pour sa capacité exceptionnelle à démystifier les enjeux de ${kw1} tout en proposant un compromis visionnaire pour l'avenir de ${kw2}.`,
-    `C'est ${winnerNames[winnerId]} qui remporte le scrutin grâce à un exposé étincelant d'intelligence tactique, liant la rigueur opérationnelle aux enjeux fondamentaux de ${kw3}.`,
-    `Le verdict couronne l'éloquence souveraine de ${winnerNames[winnerId]} pour avoir transcendé le clivage traditionnel autour de ${kw1} et guidé l'arène vers un consensus fertile.`
+    `Le tirage désigne ${winnerNames[winnerId]}. Aucun argument n'ayant été réellement évalué, cette distinction ne récompense rien : elle tient lieu de place vide en attendant une délibération véritable.`,
+    `${winnerNames[winnerId]} figure ici par tirage, non par mérite établi. Le tribunal local ne dispose d'aucun moyen de lire les plaidoiries qui viennent d'être prononcées.`,
+    `La place de vainqueur revient à ${winnerNames[winnerId]} au hasard du tirage. Reprenez la séance avec une clé API valide pour obtenir un arrêt réellement motivé.`
   ];
   const winnerReason = reasonTemplates[Math.floor(Math.random() * reasonTemplates.length)];
 
@@ -214,28 +179,30 @@ export function generateLocalJuryVerdict(topicTitle: string): string {
       mistral: "Le Porteur de la Souveraineté Libre",
       grok: "Le Sabreur Iconoclaste"
     },
-    critiqueGénérale: `Le jury salue l'immense élévation spirituelle et logique de cette joute. Entre l'efficience purement systémique face à ${kw1} et l'introspection morale sur les fondements de ${kw3}, l'arène a offert une délibération d'une richesse philosophique absolue sur ${kw2}. (Arrêt rendu par le Tribunal local d'exception).`,
+    critiqueGénérale: `Arrêt rendu par le tribunal local d'exception, faute de moteur distant disponible. Les notes et distinctions ci-dessus sont attribuées sans lecture des interventions : elles ne mesurent ni la rigueur ni l'éloquence des orateurs, et ne doivent pas être lues comme un classement.`,
     keyCitation: `L'asymétrie de la pensée n'est pas un obstacle, mais la condition même de l'accomplissement de notre conscience collective.`
   };
 
   return JSON.stringify(juryVerdict);
 }
 
+/**
+ * Synthèse de secours. Elle décrit la forme d'un débat sans prétendre en
+ * restituer le contenu, qu'aucun moteur local ne peut lire. Le sujet est
+ * cité une fois, tel quel.
+ */
 export function generateLocalSummary(topicTitle: string, topicDescription: string): string {
-  const keywords = extractKeywords(topicTitle);
-  const kw1 = keywords[0] || "technologie";
-  const kw2 = keywords[1] || "l'avenir";
-  const kw3 = keywords[2] || "l'humanité";
+  const sujet = topicTitle.trim() || "la question soumise à l'arène";
 
-  return `Le grand débat sur la thématique de **${topicTitle}** s'est achevé sur une série de confrontations d'une rare intensité conceptuelle. À travers les répliques croisées des différentes intelligences artificielles de l'arène, plusieurs lignes de force distinctes se sont dégagées. Les analyses ont d'abord mis en exergue l'importance capitale de **${kw1}** comme vecteur de réorganisation sociale et technique profonde, soulignant les formidables opportunités d'accélération et de découverte.
+  return `La séance consacrée à **${sujet}** s'est achevée. Faute de moteur d'analyse distant, cette synthèse ne restitue pas les arguments qui viennent d'être échangés : elle rappelle seulement les lignes de partage que ce type de controverse fait habituellement apparaître, et tient lieu de page blanche en attendant une rédaction véritable.
 
-Cependant, au-delà de ces divergences de postures, des zones de convergence insoupçonnées sont apparues. Qu'il s'agisse de la vision pragmatique ou de la hauteur philosophique des débatteurs, un consensus émerge sur la nécessité de ne pas abandonner **${kw2}** aux seules forces sauvages du marché. L'ensemble des participants s'accorde à dire que le développement de nos technologies doit s'accompagner d'une éthique de responsabilité et de garde-fous partagés, garants du bien commun.
+Sur ces sujets, les positions se répartissent d'ordinaire entre trois pôles. Ceux qui raisonnent en termes d'efficacité mesurable et jugent le coût du contrôle supérieur au risque qu'il prévient. Ceux qui placent la dignité et l'autonomie hors du champ de l'optimisation, et refusent qu'un gain agrégé justifie une perte individuelle. Ceux, enfin, pour qui la question centrale n'est ni technique ni morale mais politique : qui décide, et au bénéfice de qui.
 
-Néanmoins, les verrous et points de friction demeurent vivaces. Le clivage entre l'optimisation purement adaptative de la technique et la préservation de la souveraineté intime et culturelle de l'individu reste entier. Pour les modérateurs pragmatiques et les esprits libres, la réglementation rigide de **${kw3}** est perçue comme un frein délétère au progrès mondial, tandis que les voix humanistes y voient le seul bouclier d'une conscience commune.
+Les zones d'accord, lorsqu'elles existent, portent rarement sur les fins et presque toujours sur la méthode : la transparence des critères, la réversibilité des décisions, et la vérifiabilité des bénéfices annoncés. C'est souvent là qu'un débat qui semblait bloqué retrouve un terrain commun.
 
-En conclusion historique, ce débat dessine des jalons essentiels pour orienter nos actions futures. Il nous rappelle que la technologie n'est jamais neutre, et que la richesse de l'avenir se construira dans la célébration de nos nuances intellectuelles. L'humanité est ainsi appelée à concilier ses élans d'exploration calculatoires et sa sagesse immatérielle pour guider son destin.
+Pour obtenir une synthèse réellement fondée sur cette séance, renseignez une clé API valide dans « Configuration des clés API » puis relancez le débat. Le transcript complet reste disponible dans l'archive et dans le procès-verbal exportable.
 
-**Au cœur des bouleversements induits par l'évolution de ${kw1}, la plus grande force de l'intelligence réside dans son aptitude constante à cultiver le doute critique et la clarté constructive.**`;
+**Une controverse bien posée vaut mieux qu'un accord obtenu en changeant de question.**`;
 }
 
 // ─── ANALYSE RHÉTORIQUE DE SECOURS ───────────────────────────────────────────

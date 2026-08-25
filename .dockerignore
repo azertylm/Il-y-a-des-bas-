@@ -10,3 +10,7 @@ archives.json
 coverage
 build
 .DS_Store
+test-results
+playwright-report
+tests
+playwright.config.ts

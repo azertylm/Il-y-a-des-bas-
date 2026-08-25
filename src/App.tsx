@@ -1,5 +1,5 @@
 import * as React from "react";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Clock, Cpu, ShieldAlert } from "lucide-react";
 
 import { AGENTS, DEFAULT_TOPICS } from "./constants.ts";
@@ -18,10 +18,20 @@ import type { ApiEnvelope, Archive, DebateMode, Topic } from "./types.ts";
  * chaque grande zone à son propre composant.
  */
 export default function AIDebate() {
-  // Tranche de base
-  const [topicIndex] = useState(getCurrentTopicIndex);
+  // Tranche de base. L'indice suit réellement la rotation horaire : il était
+  // figé au chargement, si bien qu'après une bascule de cycle l'arène
+  // continuait d'afficher — et de débattre — le sujet précédent.
+  const [topicIndex, setTopicIndex] = useState(getCurrentTopicIndex);
   const temporalTopic = DEFAULT_TOPICS[topicIndex];
   const nextTopic = DEFAULT_TOPICS[(topicIndex + 1) % DEFAULT_TOPICS.length];
+
+  // Le cycle peut basculer pendant une séance. On mémorise le nouvel indice
+  // sans l'appliquer tout de suite : changer `activeTopic` en pleine clôture
+  // ferait archiver la séance sous le mauvais sujet.
+  const [pendingTopicIndex, setPendingTopicIndex] = useState<number | null>(null);
+  const handleCycleRollover = useCallback(() => {
+    setPendingTopicIndex(getCurrentTopicIndex());
+  }, []);
 
   // Sujet Actif de la Table Ronde
   const [activeTopic, setActiveTopic] = useState<Topic>(temporalTopic);
@@ -74,6 +84,7 @@ export default function AIDebate() {
     speechLength,
     activeAgentsFlags,
     apiKeys,
+    onCycleRollover: handleCycleRollover,
   });
 
   const {
@@ -86,6 +97,15 @@ export default function AIDebate() {
     fallacyAnalyses, analyzingMessageId, restorableSession,
     getHeaders, setErrorMessage, setDegradedNotice,
   } = engine;
+
+  // Le nouveau sujet ne s'applique qu'une fois l'arène revenue au repos :
+  // jamais pendant un tour de table, ni pendant la clôture qui écrit l'archive.
+  useEffect(() => {
+    if (pendingTopicIndex === null || phase !== "idle") return;
+    setTopicIndex(pendingTopicIndex);
+    setPendingTopicIndex(null);
+    if (activeMode === "temporal") setActiveTopic(DEFAULT_TOPICS[pendingTopicIndex]);
+  }, [pendingTopicIndex, phase, activeMode]);
 
   /** Télécharge le procès-verbal de la séance affichée. */
   const handleExportTranscript = () => {

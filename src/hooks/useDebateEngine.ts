@@ -26,6 +26,8 @@ export interface DebateSettings {
   speechLength: string;
   activeAgentsFlags: { [key: string]: boolean };
   apiKeys: { [key: string]: string };
+  /** Appelé à chaque bascule de cycle horaire, en mode temporel comme en mode manuel. */
+  onCycleRollover?: () => void;
 }
 
 /**
@@ -40,6 +42,7 @@ export function useDebateEngine({
   speechLength,
   activeAgentsFlags,
   apiKeys,
+  onCycleRollover,
 }: DebateSettings) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [phase, setPhase] = useState<DebatePhase>("idle");
@@ -74,6 +77,10 @@ export function useDebateEngine({
   // changement de sujet.
   const activeTopicRef = useRef(activeTopic);
   activeTopicRef.current = activeTopic;
+  // Idem pour la bascule de cycle : la minuterie ne doit pas se reconstruire
+  // à chaque rendu sous prétexte que le rappel a changé d'identité.
+  const rolloverRef = useRef(onCycleRollover);
+  rolloverRef.current = onCycleRollover;
 
   const getHeaders = useCallback(() => {
     const headers: Record<string, string> = {
@@ -169,6 +176,9 @@ export function useDebateEngine({
       // la séance en cours puis on vise la borne suivante.
       boundary = getNextCycleBoundary();
       setTimeLeft(Math.max(0, Math.ceil((boundary - Date.now()) / 1000)));
+      // Le sujet du cycle a changé : l'interface doit suivre, quel que soit
+      // le mode — c'est elle qui décide quand l'appliquer sans risque.
+      rolloverRef.current?.();
       if (activeMode === "temporal") {
         setPhase(p => (p !== "closing" && p !== "closed") ? "closing" : p);
       }
