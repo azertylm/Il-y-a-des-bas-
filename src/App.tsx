@@ -27,51 +27,42 @@ import {
   ThumbsUp,
   Settings,
   X,
-  Volume2
+  Volume2,
+  Swords,
+  Scroll,
+  Radio,
+  Zap,
+  Brain,
+  Compass,
+  Users,
+  FileText,
+  Cloud,
+  ExternalLink,
+  Eye,
+  EyeOff,
+  PanelLeftClose,
+  PanelLeftOpen,
+  ChevronDown,
+  ChevronUp,
+  Shuffle,
+  Type,
+  List,
+  ArrowUp,
+  ArrowDown,
+  Navigation,
+  ScrollText
 } from "lucide-react";
 
-// ─── TYPES ───────────────────────────────────────────────────────────────────
-interface Message {
-  id: string;
-  agentId: string;
-  agentName: string;
-  agentRole: string;
-  agentColor: string;
-  agentDim: string;
-  agentBorder: string;
-  agentSymbol: string;
-  content: string;
-  time: string;
-  isUser?: boolean;
-  claps?: number;
-}
-
-interface Topic {
-  id: number | string;
-  category: string;
-  title: string;
-  description: string;
-  isCustom?: boolean;
-}
-
-interface Archive {
-  key: string;
-  topic: Topic;
-  messages: Message[];
-  summary: string;
-  verdict?: Verdict;
-  closedAt: string;
-  roundCount: number;
-}
-
-interface Verdict {
-  winnerId: string;
-  winnerReason: string;
-  agentScores: { [key: string]: number };
-  agentBadges: { [key: string]: string };
-  critiqueGénérale: string;
-  keyCitation: string;
-}
+import { FallacyInspector } from "./components/FallacyInspector";
+import { DuelArenaModal } from "./components/DuelArenaModal";
+import { PhilosophicalRadar2D } from "./components/PhilosophicalRadar2D";
+import { BreakingNewsModal } from "./components/BreakingNewsModal";
+import { UniversalTreatyModal } from "./components/UniversalTreatyModal";
+import { AudioAtmospherePlayer } from "./components/AudioAtmospherePlayer";
+import { LiveAudienceVote } from "./components/LiveAudienceVote";
+import { GoogleDriveModal } from "./components/GoogleDriveModal";
+import { ZenDebateReader } from "./components/ZenDebateReader";
+import { Message, Topic, Archive, Verdict, Agent } from "./types";
 
 // ─── THÈMES TEMPORELS PAR DÉFAUT ─────────────────────────────────────────────
 const DEFAULT_TOPICS: Topic[] = [
@@ -193,6 +184,7 @@ export default function AIDebate() {
   const [phase, setPhase] = useState<"idle" | "running" | "paused" | "closing" | "closed">("idle");
   const [loadingAgent, setLoadingAgent] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(getSecondsUntilNextCycle);
+  const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [roundCount, setRoundCount] = useState(0);
   const [summary, setSummary] = useState("");
   const [verdict, setVerdict] = useState<Verdict | null>(null);
@@ -215,7 +207,7 @@ export default function AIDebate() {
 
   // Debate parameters
   const [debateTone, setDebateTone] = useState<string>("incisif"); // incisif | constructif | didactique
-  const [speechLength, setSpeechLength] = useState<string>("standard"); // court | standard | académique
+  const [speechLength, setSpeechLength] = useState<string>("court"); // court | standard | académique
   const [activeAgentsFlags, setActiveAgentsFlags] = useState<{ [key: string]: boolean }>({
     chatgpt: true,
     claude: true,
@@ -237,6 +229,31 @@ export default function AIDebate() {
     culture: 50,
   });
 
+  // --- MODALS RÉVOLUTIONNAIRES ---
+  const [isDuelOpen, setIsDuelOpen] = useState(false);
+  const [isBreakingNewsOpen, setIsBreakingNewsOpen] = useState(false);
+  const [isTreatyOpen, setIsTreatyOpen] = useState(false);
+  const [isRadarOpen, setIsRadarOpen] = useState(false);
+  const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
+
+  const handleInjectTwist = (headline: string, description: string, question: string) => {
+    const twistMsg: Message = {
+      id: `twist-${Date.now()}`,
+      agentId: "system-twist",
+      agentName: "FLASH INFO / COUP DE THÉÂTRE",
+      agentRole: "Événement Imprévu Majeur",
+      agentColor: "#ef4444",
+      agentDim: "rgba(239, 68, 68, 0.12)",
+      agentBorder: "rgba(239, 68, 68, 0.4)",
+      agentSymbol: "🚨",
+      content: `🚨 **COUP DE THÉÂTRE : ${headline.toUpperCase()}**\n\n${description}\n\n👉 **Question urgente imposée aux débatteurs :** *${question}*`,
+      time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
+      isUser: false,
+      claps: 0,
+    };
+    setMessages(prev => [...prev, twistMsg]);
+  };
+
   // --- CLÉS API DES UTILISATEURS ---
   const [showApiKeys, setShowApiKeys] = useState(false);
   const [apiKeys, setApiKeys] = useState<{ [key: string]: string }>(() => {
@@ -253,6 +270,168 @@ export default function AIDebate() {
     const updated = { ...apiKeys, [agentId]: value };
     setApiKeys(updated);
     localStorage.setItem("debate_api_keys", JSON.stringify(updated));
+  };
+
+  // --- AFFICHAGE / MASQUAGE DES MODULES LATÉRAUX ---
+  // Permet de masquer la configuration du thème, le réglage des retenues & tonalités, la boussole et le vote du public pour accéder directement au débat
+  const [showThemeConfig, setShowThemeConfig] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("debate_show_theme_config");
+      return saved !== null ? saved === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const [showToneSettings, setShowToneSettings] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("debate_show_tone_settings");
+      return saved !== null ? saved === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const [showRadar, setShowRadar] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("debate_show_radar");
+      return saved !== null ? saved === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const [showAudienceVote, setShowAudienceVote] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("debate_show_audience_vote");
+      return saved !== null ? saved === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("debate_show_sidebar");
+      return saved !== null ? saved === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleThemeConfig = (val?: boolean) => {
+    setShowThemeConfig(prev => {
+      const next = val !== undefined ? val : !prev;
+      try { localStorage.setItem("debate_show_theme_config", String(next)); } catch {}
+      return next;
+    });
+  };
+
+  const handleToggleToneSettings = (val?: boolean) => {
+    setShowToneSettings(prev => {
+      const next = val !== undefined ? val : !prev;
+      try { localStorage.setItem("debate_show_tone_settings", String(next)); } catch {}
+      return next;
+    });
+  };
+
+  const handleToggleRadar = (val?: boolean) => {
+    setShowRadar(prev => {
+      const next = val !== undefined ? val : !prev;
+      try { localStorage.setItem("debate_show_radar", String(next)); } catch {}
+      return next;
+    });
+  };
+
+  const handleToggleAudienceVote = (val?: boolean) => {
+    setShowAudienceVote(prev => {
+      const next = val !== undefined ? val : !prev;
+      try { localStorage.setItem("debate_show_audience_vote", String(next)); } catch {}
+      return next;
+    });
+  };
+
+  const handleToggleSidebar = (val?: boolean) => {
+    setIsSidebarVisible(prev => {
+      const next = val !== undefined ? val : !prev;
+      try { localStorage.setItem("debate_show_sidebar", String(next)); } catch {}
+      return next;
+    });
+  };
+
+  // Masquer tous les modules pour un accès direct au débat en première page
+  const handleHideAllSideModules = () => {
+    handleToggleThemeConfig(false);
+    handleToggleToneSettings(false);
+    handleToggleRadar(false);
+    handleToggleAudienceVote(false);
+    handleToggleSidebar(false);
+  };
+
+  // Tout réafficher
+  const handleShowAllSideModules = () => {
+    handleToggleThemeConfig(true);
+    handleToggleToneSettings(true);
+    handleToggleRadar(true);
+    handleToggleAudienceVote(true);
+    handleToggleSidebar(true);
+  };
+
+  const isAllSideModulesHidden = !isSidebarVisible || (!showThemeConfig && !showToneSettings && !showRadar && !showAudienceVote);
+
+  // Contrôle de la taille de police (Bouton BIG pour agrandir la typographie à l'écran)
+  const [fontSizeLevel, setFontSizeLevel] = useState<"normal" | "large" | "xlarge">(() => {
+    try {
+      const saved = localStorage.getItem("debate_font_size");
+      if (saved === "large" || saved === "xlarge") return saved;
+      return "normal";
+    } catch {
+      return "normal";
+    }
+  });
+
+  const handleCycleFontSize = () => {
+    setFontSizeLevel(prev => {
+      const next = prev === "normal" ? "large" : prev === "large" ? "xlarge" : "normal";
+      try { localStorage.setItem("debate_font_size", next); } catch {}
+      return next;
+    });
+  };
+
+  // Mode Vitesse Rapide / Turbo (répliques brèves, sans latence et directes)
+  const [isTurboSpeed, setIsTurboSpeed] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("debate_turbo_speed");
+      return saved !== null ? saved === "true" : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const handleToggleTurboSpeed = () => {
+    setIsTurboSpeed(prev => {
+      const next = !prev;
+      try { localStorage.setItem("debate_turbo_speed", String(next)); } catch {}
+      return next;
+    });
+  };
+
+  // État compact pour le bandeau de sujet (pour que l'arène et le débat tiennent sur la première page)
+  const [isTopicBannerCollapsed, setIsTopicBannerCollapsed] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("debate_topic_banner_collapsed");
+      return saved === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleTopicBanner = (val?: boolean) => {
+    setIsTopicBannerCollapsed(prev => {
+      const next = val !== undefined ? val : !prev;
+      try { localStorage.setItem("debate_topic_banner_collapsed", String(next)); } catch {}
+      return next;
+    });
   };
 
   const getHeaders = useCallback(() => {
@@ -272,6 +451,192 @@ export default function AIDebate() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const stopRequested = useRef(false);
   const messagesRef = useRef<Message[]>([]);
+
+  // Mode de visualisation : "stream" (Défilement continu confort avec lecture non perturbée) ou "zen" (Mode par fiche)
+  const [displayMode, setDisplayMode] = useState<"stream" | "zen">(() => {
+    try {
+      const saved = localStorage.getItem("debate_display_mode");
+      if (saved === "zen" || saved === "stream") return saved;
+      return "stream";
+    } catch {
+      return "stream";
+    }
+  });
+
+  const handleSetDisplayMode = (mode: "zen" | "stream") => {
+    setDisplayMode(mode);
+    try { localStorage.setItem("debate_display_mode", mode); } catch {}
+  };
+
+  // Index de l'orateur affiché en mode Fiche (Zen)
+  const [zenActiveIndex, setZenActiveIndex] = useState<number>(0);
+
+  // Rythme de lecture pour lire sereinement sans devoir scroller
+  const [readingPace, setReadingPace] = useState<"zen" | "confort" | "manuel" | "rapide">(() => {
+    try {
+      const saved = localStorage.getItem("debate_reading_pace");
+      if (saved === "zen" || saved === "confort" || saved === "manuel" || saved === "rapide") return saved;
+      return "confort";
+    } catch {
+      return "confort";
+    }
+  });
+
+  const [readingCountdown, setReadingCountdown] = useState<number>(0);
+  const [isReadingWaiting, setIsReadingWaiting] = useState<boolean>(false);
+  const [isReadingPaused, setIsReadingPaused] = useState<boolean>(false);
+  const [waitingNextSpeaker, setWaitingNextSpeaker] = useState<string | null>(null);
+
+  const readingPaceRef = useRef(readingPace);
+  useEffect(() => {
+    readingPaceRef.current = readingPace;
+  }, [readingPace]);
+
+  const isReadingPausedRef = useRef(false);
+  const skipReadingWaitRef = useRef<(() => void) | null>(null);
+
+  const handleToggleReadingPause = () => {
+    setIsReadingPaused(p => {
+      const next = !p;
+      isReadingPausedRef.current = next;
+      return next;
+    });
+  };
+
+  const handleSkipReadingWait = () => {
+    skipReadingWaitRef.current?.();
+  };
+
+  const handleChangeReadingPace = (pace: "zen" | "confort" | "manuel" | "rapide") => {
+    setReadingPace(pace);
+    readingPaceRef.current = pace;
+    try { localStorage.setItem("debate_reading_pace", pace); } catch {}
+    if (isReadingWaiting && pace !== "manuel") {
+      setReadingCountdown(pace === "zen" ? 10 : pace === "confort" ? 6 : 2);
+    }
+  };
+
+  // Suivi automatique du défilement intelligent :
+  // ACTIF : suit doucement les nouvelles prises de parole
+  // EN PAUSE : l'écran est strictement figé, l'utilisateur lit et scrolle librement sans aucun saut
+  const [autoScrollActive, setAutoScrollActive] = useState<boolean>(true);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [lastUnreadSpeaker, setLastUnreadSpeaker] = useState<string | null>(null);
+  const autoScrollActiveRef = useRef(true);
+  const isProgrammaticScrollRef = useRef(false);
+
+  useEffect(() => {
+    autoScrollActiveRef.current = autoScrollActive;
+  }, [autoScrollActive]);
+
+  const streamContainerRef = useRef<HTMLDivElement>(null);
+
+  // Détection du scroll utilisateur pour ne JAMAIS le déranger s'il est en train de lire
+  const handleStreamScroll = () => {
+    const el = streamContainerRef.current;
+    if (!el) return;
+    if (isProgrammaticScrollRef.current) return;
+
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    
+    // Si l'utilisateur a scrollé vers le haut (plus de 50px du fond), on suspend immédiatement l'auto-scroll
+    if (distanceFromBottom > 50 && autoScrollActiveRef.current) {
+      setAutoScrollActive(false);
+    } else if (distanceFromBottom <= 20 && !autoScrollActiveRef.current) {
+      // S'il est revenu tout en bas, on réengage le suivi
+      setAutoScrollActive(true);
+      setUnreadCount(0);
+      setLastUnreadSpeaker(null);
+    }
+  };
+
+  // Détection du coup de molette ou geste tactile vers le haut
+  const handleUserWheel = (e: React.WheelEvent) => {
+    if (e.deltaY < 0 && autoScrollActiveRef.current) {
+      setAutoScrollActive(false);
+    }
+  };
+
+  const handleUserTouchMove = () => {
+    const el = streamContainerRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    if (distanceFromBottom > 50 && autoScrollActiveRef.current) {
+      setAutoScrollActive(false);
+    }
+  };
+
+  const resumeAutoScroll = () => {
+    setAutoScrollActive(true);
+    setUnreadCount(0);
+    setLastUnreadSpeaker(null);
+    isProgrammaticScrollRef.current = true;
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    setTimeout(() => {
+      isProgrammaticScrollRef.current = false;
+    }, 600);
+  };
+
+  const scrollToMessage = (msgId: string) => {
+    const el = document.getElementById(`msg-${msgId}`);
+    if (el) {
+      setAutoScrollActive(false);
+      el.scrollIntoView({ behavior: "smooth", block: "center" });
+      el.classList.add("ring-2", "ring-[#00f5c4]", "ring-offset-2", "ring-offset-black");
+      setTimeout(() => {
+        el.classList.remove("ring-2", "ring-[#00f5c4]", "ring-offset-2", "ring-offset-black");
+      }, 2000);
+    }
+  };
+
+  // Fonction d'attente de lecture sereine avant la prise de parole de l'orateur suivant
+  const waitForReading = useCallback((currentAgentName: string, nextAgentName?: string) => {
+    return new Promise<void>((resolve) => {
+      if (stopRequested.current) {
+        resolve();
+        return;
+      }
+
+      const pace = readingPaceRef.current;
+      let totalSeconds = pace === "zen" ? 10 : pace === "confort" ? 6 : pace === "rapide" ? 2 : 999999;
+      
+      setIsReadingWaiting(true);
+      setReadingCountdown(pace === "manuel" ? 0 : totalSeconds);
+      setWaitingNextSpeaker(nextAgentName || null);
+
+      let timer: any = null;
+
+      const finish = () => {
+        if (timer) clearInterval(timer);
+        skipReadingWaitRef.current = null;
+        setIsReadingWaiting(false);
+        setReadingCountdown(0);
+        setWaitingNextSpeaker(null);
+        resolve();
+      };
+
+      skipReadingWaitRef.current = finish;
+
+      if (pace === "manuel") {
+        return;
+      }
+
+      timer = setInterval(() => {
+        if (stopRequested.current) {
+          finish();
+          return;
+        }
+
+        if (!isReadingPausedRef.current) {
+          totalSeconds -= 1;
+          setReadingCountdown(totalSeconds);
+          if (totalSeconds <= 0) {
+            finish();
+          }
+        }
+      }, 1000);
+    });
+  }, []);
 
   // Garder les messages dans un ref pour les boucles asynchrones
   useEffect(() => {
@@ -340,6 +705,7 @@ export default function AIDebate() {
     timerRef.current = setInterval(() => {
       const secs = getSecondsUntilNextCycle();
       setTimeLeft(secs);
+      setCurrentTime(new Date());
       
       // Seulement si on utilise le mode temporel par défaut, on déclenche la fermeture automatique à la fin du cycle
       if (secs === 0 && activeMode === "temporal") {
@@ -447,6 +813,11 @@ export default function AIDebate() {
           } else if (cleanText.startsWith("```")) {
             cleanText = cleanText.replace(/^```/, "").replace(/```$/, "").trim();
           }
+          const firstBrace = cleanText.indexOf("{");
+          const lastBrace = cleanText.lastIndexOf("}");
+          if (firstBrace !== -1 && lastBrace !== -1) {
+            cleanText = cleanText.substring(firstBrace, lastBrace + 1);
+          }
           finalVerdict = JSON.parse(cleanText);
           setVerdict(finalVerdict || null);
         } catch (e) {
@@ -457,10 +828,10 @@ export default function AIDebate() {
         setSummary(sumText);
       }
     } catch (e: any) {
-      console.error(e);
+      console.warn("[IADÉBAT CLIENT] Retard lors de la synthèse :", e?.message || e);
       sumText = "La synthèse prospective et les analyses du jury sont temporairement inaccessibles en raison d'un conflit réseau.";
       setSummary(sumText);
-      setErrorMessage(e.message || "Erreur de traitement des données de synthèse.");
+      setErrorMessage(e?.message || "Erreur de traitement des données de synthèse.");
     }
 
     // Sauvegarde en archive durable de l'historique complet
@@ -575,8 +946,10 @@ export default function AIDebate() {
       return;
     }
 
-    for (const agent of activeAgents) {
+    for (let i = 0; i < activeAgents.length; i++) {
       if (stopRequested.current) break;
+      const agent = activeAgents[i];
+      const nextAgent = i < activeAgents.length - 1 ? activeAgents[i + 1] : undefined;
       
       setLoadingAgent(agent.id);
       
@@ -586,17 +959,17 @@ export default function AIDebate() {
 
       // Adaptation dynamique du prompt système en fonction des paramètres du débat
       let enhancedPrompt = agent.systemPrompt;
-      if (debateTone === "incisif") {
+      if (isTurboSpeed || speechLength === "court") {
+        enhancedPrompt += " Fais une intervention concise, tranchante et percutante en moins de 90 mots. Pas de préambule.";
+      } else if (debateTone === "incisif") {
         enhancedPrompt += " Le débat est rude, n'hésite pas à ébranler tes confrères et à déceler des failles de logique dans leurs positions de façon vive et combative.";
       } else if (debateTone === "constructif") {
         enhancedPrompt += " Favorise l'écoute active, cherche des compromis, souligne là où tu rejoins les thèses d'autrui pour concevoir une issue convergente.";
       } else if (debateTone === "didactique") {
-        enhancedPrompt += " Reste extrêmement didactique, emploie des analogises simples, explique les théories philosophiques ou économiques pas à pas avec pédagogie.";
+        enhancedPrompt += " Reste didactique, emploie des analogies simples, explique pas à pas avec pédagogie.";
       }
 
-      if (speechLength === "court") {
-        enhancedPrompt += " Fais une tirade extrêmement condensée, va droit au but en moins de 120 mots au total pour une réplique tranchante.";
-      } else if (speechLength === "académique") {
+      if (!isTurboSpeed && speechLength === "académique") {
         enhancedPrompt += " Reste académique, développe amplement ton argumentaire sur plusieurs paragraphes denses avec une profondeur structurelle remarquable.";
       }
 
@@ -610,11 +983,12 @@ export default function AIDebate() {
             topicDescription: activeTopic.description,
             context,
             agentId: agent.id,
+            speed: isTurboSpeed ? "turbo" : "standard",
           }),
         });
 
         if (!res.ok) {
-          const err = await res.json();
+          const err = await res.json().catch(() => ({}));
           throw new Error(err.error || `Erreur de traitement sur le modèle d'${agent.name}`);
         }
 
@@ -635,48 +1009,90 @@ export default function AIDebate() {
           claps: 0,
         };
 
-        setMessages(prev => [...prev, msg]);
+        setMessages(prev => {
+          const updated = [...prev, msg];
+          messagesRef.current = updated;
+          return updated;
+        });
+
+        // Focalise automatiquement le lecteur Zen sur la nouvelle intervention
+        setZenActiveIndex(messagesRef.current.length - 1);
       } catch (e: any) { 
-        console.error(agent.name, e);
-        setErrorMessage(`Défaillance passagère de ${agent.name}: ${e.message}`);
-        stopRequested.current = true;
-        setPhase("paused");
+        console.warn(`[IADÉBAT CLIENT] Défaillance passagère de ${agent.name} :`, e?.message || e);
+        setErrorMessage(`Défaillance réseau passagère de ${agent.name}. La parole passe au décodeur suivant.`);
+        setTimeout(() => setErrorMessage(null), 3000);
         setLoadingAgent(null);
-        return;
+        await new Promise(r => setTimeout(r, 200));
+        continue;
       }
       
       setLoadingAgent(null);
-      // Temporisation de lecture réaliste
-      await new Promise(r => setTimeout(r, 650));
+      // Temporisation de lecture adaptée pour que la personne puisse lire tranquillement sans scroller
+      if (i < activeAgents.length - 1) {
+        await waitForReading(agent.name, nextAgent?.name);
+      }
     }
     
     setRoundCount(n => n + 1);
     setPhase("paused");
-  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength]);
+  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength, isTurboSpeed, getHeaders, waitForReading]);
+
+  // Sélectionne les agents actifs en désignant un premier orateur aléatoire (jamais forcé sur ChatGPT)
+  const getRandomizedActiveAgents = useCallback((avoidFirstId?: string | null) => {
+    const active = AGENTS.filter(a => activeAgentsFlags[a.id]);
+    if (active.length === 0) return [];
+    if (active.length === 1) return active;
+
+    // Pour éviter de réenchaîner directement sur la même IA lors d'une reprise
+    const candidates = (avoidFirstId && active.some(a => a.id !== avoidFirstId))
+      ? active.filter(a => a.id !== avoidFirstId)
+      : active;
+
+    // Choix aléatoire équitable parmi tous les modèles actifs
+    const randomPick = candidates[Math.floor(Math.random() * candidates.length)];
+    const chosenIndex = active.findIndex(a => a.id === randomPick.id);
+
+    // Faire pivoter la liste pour démarrer par cette IA aléatoire
+    return [...active.slice(chosenIndex), ...active.slice(0, chosenIndex)];
+  }, [activeAgentsFlags]);
 
   // Contrôleurs interactifs principaux
   const handleStart = () => {
-    runAgents(AGENTS);
+    // Premier orateur choisi TOTALEMENT ALÉATOIREMENT parmi les IA actives
+    const randomizedList = getRandomizedActiveAgents();
+    runAgents(randomizedList);
   };
 
   const handlePause = () => {
     stopRequested.current = true;
+    skipReadingWaitRef.current?.();
+    setIsReadingWaiting(false);
     setPhase("paused");
   };
 
   const handleContinue = () => {
-    const offset = roundCount % AGENTS.length;
-    runAgents([...AGENTS.slice(offset), ...AGENTS.slice(0, offset)]);
+    // Identifier la dernière IA ayant parlé pour ne pas reprendre sur elle ni toujours sur ChatGPT
+    const msgs = messagesRef.current;
+    const lastSpeakerId = msgs.length > 0 ? msgs[msgs.length - 1].agentId : null;
+    const rotatedList = getRandomizedActiveAgents(lastSpeakerId);
+    runAgents(rotatedList);
   };
 
   const handleStopAndSummarize = () => {
     stopRequested.current = true;
+    skipReadingWaitRef.current?.();
+    setIsReadingWaiting(false);
     closeDebate(messages);
   };
 
   const handleReset = () => {
+    stopRequested.current = true;
+    skipReadingWaitRef.current?.();
+    setIsReadingWaiting(false);
+    setReadingCountdown(0);
     setMessages([]);
     setRoundCount(0);
+    setZenActiveIndex(0);
     setSummary("");
     setVerdict(null);
     setPhase("idle");
@@ -739,106 +1155,223 @@ export default function AIDebate() {
     handleSelectTopic(userTopic);
   };
 
-  // Scroll au fond du fil de messages durant l'écoute active
+  // Défilement automatique doux lors de l'arrivée d'une nouvelle réplique (sans sursaut ni interruption de lecture)
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loadingAgent, summary, closingProgress]);
+    if (displayMode !== "stream" || messages.length === 0) return;
+
+    if (autoScrollActiveRef.current) {
+      isProgrammaticScrollRef.current = true;
+      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+      setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 600);
+    } else {
+      // L'utilisateur est en train de lire plus haut : AUCUN DÉPLACEMENT, position 100% stable
+      const latest = messages[messages.length - 1];
+      if (latest && !latest.isUser) {
+        setUnreadCount(prev => prev + 1);
+        setLastUnreadSpeaker(latest.agentName);
+      }
+    }
+  }, [messages.length, displayMode]);
 
   const isClosed = phase === "closed" || phase === "closing";
   const selectedThemeTitle = activeTopic.title;
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#050505] text-[#f3f4f6] font-sans relative overflow-hidden">
+    <div className="min-h-screen flex flex-col bg-[#050505] text-[#f3f4f6] font-sans relative">
       
       {/* Visual background enhancements */}
       <div className="fixed inset-0 pointer-events-none z-0" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.01) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.01) 1px, transparent 1px)", backgroundSize: "60px 60px", animation: "breathe 10s infinite" }} />
       <div className="fixed top-[-20vh] left-1/2 -translate-x-1/2 w-full max-w-[1200px] h-[45vh] bg-[radial-gradient(ellipse,rgba(0,245,196,0.04)_0%,transparent_70%)] pointer-events-none z-0" />
 
       {/* ── HEADER ──────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-[#050505]/92 backdrop-blur-xl px-4 md:px-6 h-16 flex items-center justify-between gap-4">
+      <header className="sticky top-0 z-50 border-b border-white/[0.08] bg-[#070709]/95 backdrop-blur-xl px-1.5 sm:px-2 py-0.5 min-h-[38px] flex flex-wrap items-center justify-between gap-1.5 shrink-0">
         
         {/* Titre et tags */}
-        <div className="flex items-center gap-3 shrink-0">
-          <div className="text-xl md:text-2xl font-black font-condensed tracking-tight text-white uppercase flex items-center gap-2">
-            <Cpu className="w-5 h-5 text-[#00f5c4] animate-pulse" />
-            IA<span className="text-[#00f5c4]">DÉBAT</span>
-            <span className="text-[10px] tracking-widest text-[#555] font-condensed bg-white/[0.04] px-1.5 py-0.5 rounded ml-1 hidden sm:inline-block border border-white/[0.05]">PRO STUDIO</span>
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="text-base sm:text-lg md:text-xl font-black tracking-normal text-white flex items-center gap-1.5">
+            <Cpu className="w-4 h-4 text-[#00f5c4] animate-pulse" />
+            <span>IA<span className="text-[#00f5c4]">DÉBAT</span></span>
+            <span className="text-[10px] font-bold text-[#888] bg-white/[0.05] px-1.5 py-0.5 rounded border border-white/[0.08] hidden sm:inline-block">PRO</span>
           </div>
           {isClosed ? (
-            <div className="flex items-center bg-white/[0.04] border border-white/[0.08] rounded px-2 py-0.5 text-[10px] font-bold tracking-widest text-[#888] font-condensed">
+            <div className="flex items-center bg-white/[0.06] border border-white/[0.1] rounded px-2 py-0.5 text-[10px] font-bold text-gray-300">
               ARCHIVÉ
             </div>
           ) : (
-            <div className="flex items-center gap-1.5 bg-red-500/10 border border-red-500/20 rounded px-2 py-0.5 text-[10px] font-bold tracking-widest text-[#ef4444] font-condensed">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#ef4444] animate-ping" />
+            <div className="flex items-center gap-1.5 bg-red-500/15 border border-red-500/30 rounded px-2 py-0.5 text-[10px] font-bold text-red-400">
+              <span className="w-2 h-2 rounded-full bg-red-500 animate-ping" />
               DIRECT
             </div>
           )}
         </div>
 
-        {/* Global tab Switcher */}
-        <div className="flex gap-1 bg-white/[0.03] border border-white/[0.05] rounded-lg p-1">
-          <button 
-            onClick={() => setTab("debate")} 
-            className={`border-none rounded-md px-3 md:px-4 py-1 text-xs font-bold font-condensed tracking-wider transition-all duration-150 cursor-pointer ${
-              tab === "debate" 
-                ? "bg-white/[0.08] text-white" 
-                : "bg-transparent text-[#777] hover:text-white"
-            }`}
-          >
-            STUDIO DEBATE
-          </button>
-          <button 
-            onClick={() => { setTab("archive"); setSelectedArchive(null); }} 
-            className={`border-none rounded-md px-3 md:px-4 py-1 text-xs font-bold font-condensed tracking-wider transition-all duration-150 cursor-pointer ${
-              tab === "archive" 
-                ? "bg-white/[0.08] text-white" 
-                : "bg-transparent text-[#777] hover:text-white"
-            }`}
-          >
-            ARCHIVES ({archives.length})
-          </button>
+        {/* Global tab Switcher & Audio Atmosphere */}
+        <div className="flex items-center gap-2 shrink-0">
+          <div className="flex gap-1 bg-white/[0.04] border border-white/[0.08] rounded-lg p-0.5">
+            <button 
+              onClick={() => setTab("debate")} 
+              className={`border-none rounded-md px-2.5 sm:px-3 py-1 text-xs font-bold transition-all duration-150 cursor-pointer ${
+                tab === "debate" 
+                  ? "bg-white/[0.12] text-white shadow-sm" 
+                  : "bg-transparent text-gray-400 hover:text-white"
+              }`}
+            >
+              STUDIO DÉBAT
+            </button>
+            <button 
+              onClick={() => { setTab("archive"); setSelectedArchive(null); }} 
+              className={`border-none rounded-md px-2.5 sm:px-3 py-1 text-xs font-bold transition-all duration-150 cursor-pointer ${
+                tab === "archive" 
+                  ? "bg-white/[0.12] text-white shadow-sm" 
+                  : "bg-transparent text-gray-400 hover:text-white"
+              }`}
+            >
+              ARCHIVES ({archives.length})
+            </button>
+          </div>
+
+          <div className="hidden sm:block">
+            <AudioAtmospherePlayer />
+          </div>
         </div>
 
-        {/* Dynamic global clock cycle */}
-        <div className="text-right shrink-0 hidden md:block">
-          <div className="text-[10px] tracking-widest text-[#666] font-condensed">
-            {activeMode === "temporal" ? "ROTATION HORAIRE UTC" : "MANUEL / STUDIO PRO"}
-          </div>
-          <div className="font-condensed font-bold text-[#00f5c4] tabular-nums flex items-center justify-end gap-1.5 leading-none mt-1">
-            <Clock className="w-3.5 h-3.5 opacity-70" />
-            {activeMode === "temporal" ? fmtTimer(timeLeft) : "-- : -- : --"}
+        {/* Boutons d'actions principaux */}
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          
+          {/* BOUTON BIG : Écrit tout simplement "BIG" */}
+          <button
+            onClick={handleCycleFontSize}
+            title="Agrandir la taille de police (BIG)"
+            className={`flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg border font-black text-xs uppercase cursor-pointer transition-all shadow-sm shrink-0 ${
+              fontSizeLevel !== "normal"
+                ? "bg-purple-600/40 text-purple-200 border-purple-400 ring-2 ring-purple-400/40"
+                : "bg-white/[0.06] hover:bg-white/[0.12] text-gray-200 hover:text-white border-white/20"
+            }`}
+          >
+            <Type className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+            <span className="font-black tracking-wider text-xs">BIG</span>
+            {fontSizeLevel !== "normal" && (
+              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0 animate-pulse" />
+            )}
+          </button>
+
+          {/* BOUTON TOUT MASQUER / TOUT OUVRIR (desktop) */}
+          <button
+            onClick={() => {
+              if (isAllSideModulesHidden) {
+                handleShowAllSideModules();
+              } else {
+                handleHideAllSideModules();
+              }
+            }}
+            title={isAllSideModulesHidden ? "Tout Réafficher" : "Tout Masquer"}
+            className={`hidden sm:flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0 ${
+              isAllSideModulesHidden
+                ? "bg-[#00f5c4]/15 hover:bg-[#00f5c4]/25 text-[#00f5c4] border-[#00f5c4]/40"
+                : "bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/40"
+            }`}
+          >
+            {isAllSideModulesHidden ? (
+              <>
+                <Eye className="w-3.5 h-3.5 text-[#00f5c4] shrink-0" />
+                <span>Tout Ouvrir</span>
+              </>
+            ) : (
+              <>
+                <EyeOff className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                <span>Tout Masquer</span>
+              </>
+            )}
+          </button>
+
+          <button
+            id="google-drive-header-btn"
+            onClick={() => setIsDriveModalOpen(true)}
+            title="Google Drive"
+            className="hidden sm:flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/30 text-blue-300 font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0"
+          >
+            <Cloud className="w-3 h-3 text-blue-400 shrink-0" />
+            <span>Drive</span>
+          </button>
+
+          <button
+            onClick={() => setIsDuelOpen(true)}
+            title="Arène Duel 1v1"
+            className="hidden sm:flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 text-red-200 font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0"
+          >
+            <Swords className="w-3 h-3 text-red-400 shrink-0" />
+            <span>Duel</span>
+          </button>
+
+          <div className="text-right shrink-0 hidden xl:block border-l border-white/[0.08] pl-3">
+            <div className="font-bold text-[#00f5c4] tabular-nums flex items-center justify-end gap-1.5 text-xs">
+              <Clock className="w-3 h-3 opacity-70" />
+              {currentTime.toUTCString().slice(17, 25)} UTC
+            </div>
           </div>
         </div>
       </header>
 
-      {/* ── ALERTE ERREUR SI CLÉ API MANQUANTE ───────────────────────────── */}
+      {/* ── ALERTE ERREUR DISSIPABLE ───────────────────────────── */}
       {errorMessage && (
-        <div className="bg-red-500/10 border-b border-red-500/20 px-6 py-3 flex items-center gap-3 text-sm text-[#f87171] z-40 relative animate-fadeSlideUp">
-          <ShieldAlert className="w-5 h-5 shrink-0" />
-          <div className="flex-1">
-            <strong>Une anomalie s'est produite :</strong> {errorMessage}. Veuillez vérifier vos paramètres ou votre connexion réseau.
+        <div className="bg-red-950/80 border-b border-red-500/30 px-3 py-1.5 flex items-center justify-between gap-2 text-xs text-red-200 z-40 relative animate-fadeSlideUp shrink-0">
+          <div className="flex items-center gap-1.5 min-w-0 flex-1">
+            <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
+            <span className="truncate">{errorMessage}</span>
           </div>
-          <button onClick={() => setErrorMessage(null)} className="text-white hover:opacity-100 opacity-60 text-xs font-bold bg-transparent border-none cursor-pointer">
-            Fermer X
+          <button 
+            onClick={() => setErrorMessage(null)} 
+            className="text-white/80 hover:text-white bg-white/10 hover:bg-white/20 px-2 py-0.5 rounded text-[11px] font-bold cursor-pointer shrink-0"
+          >
+            Fermer ✕
           </button>
         </div>
       )}
 
       {/* ── CORPS DE L'APPLICATION EN 2 SECTIONS ────────────────────────── */}
-      <main className="flex-1 flex flex-col lg:flex-row relative z-10 overflow-hidden w-full max-w-7xl mx-auto px-2 md:px-6 py-2 gap-4">
+      <main className="flex-1 flex flex-col lg:flex-row relative z-10 w-full max-w-none mx-0 px-0.5 sm:px-1 py-0.5 gap-1">
         
         {tab === "debate" ? (
           <>
             {/* ── COLONNE DE GAUCHE : PARAMÈTRES ET ATELIER DE CRÉATION ──────── */}
-            <section className="w-full lg:w-[350px] flex flex-col shrink-0 gap-4 overflow-y-auto lg:h-[calc(100vh-100px)] p-1">
-              
-              {/* SÉLECTEUR DE MODE DU SUJET */}
-              <div className="border border-white/[0.05] rounded-xl bg-[#090909]/60 p-4">
-                <h3 className="font-condensed font-bold text-xs tracking-wider uppercase text-gray-400 flex items-center gap-1.5 mb-3">
-                  <Sliders className="w-3.5 h-3.5 text-[#00f5c4]" />
-                  CONFIGURATION DU THÈME
-                </h3>
+            {isSidebarVisible && (showThemeConfig || showToneSettings || showRadar || showAudienceVote || showApiKeys) && (
+              <section className="w-full lg:w-[310px] xl:w-[320px] flex flex-col shrink-0 gap-1 overflow-y-auto min-h-0 h-full p-0.5 animate-fadeSlideUp scrollbar-thin">
+                
+                {/* Barre de contrôle des modules latéraux */}
+                <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-[#090909]/90 border border-white/[0.06] text-xs">
+                  <span className="font-condensed font-bold text-[11px] uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
+                    <Sliders className="w-3 h-3 text-[#00f5c4]" />
+                    Modules Latéraux
+                  </span>
+                  <button
+                    onClick={handleHideAllSideModules}
+                    className="text-[10px] font-condensed font-bold uppercase tracking-wider text-amber-300 hover:text-amber-200 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/20 px-2 py-0.5 rounded cursor-pointer flex items-center gap-1 transition-all"
+                    title="Masquer la configuration, les réglages, la boussole et le vote pour donner la priorité au débat"
+                  >
+                    <EyeOff className="w-2.5 h-2.5" />
+                    Tout Masquer
+                  </button>
+                </div>
+
+                {/* SÉLECTEUR DE MODE DU SUJET */}
+                {showThemeConfig && (
+                  <div className="border border-white/[0.05] rounded-xl bg-[#090909]/60 p-4">
+                    <div className="flex items-center justify-between mb-3 border-b border-white/[0.05] pb-1.5">
+                      <h3 className="font-condensed font-bold text-xs tracking-wider uppercase text-gray-400 flex items-center gap-1.5">
+                        <Sliders className="w-3.5 h-3.5 text-[#00f5c4]" />
+                        CONFIGURATION DU THÈME
+                      </h3>
+                      <button
+                        onClick={() => handleToggleThemeConfig(false)}
+                        className="flex items-center gap-1 px-1.5 py-0.5 text-gray-500 hover:text-white bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.05] rounded text-[10px] font-condensed uppercase tracking-wider cursor-pointer transition-colors"
+                        title="Masquer la configuration du thème"
+                      >
+                        <EyeOff className="w-3 h-3" />
+                        <span>Masquer</span>
+                      </button>
+                    </div>
                 
                 <div className="flex flex-col gap-2">
                   <button 
@@ -885,10 +1418,11 @@ export default function AIDebate() {
                   </button>
                 </div>
               </div>
+            )}
 
-              {/* DETAILS FORMULAIRE SELON LE MODE */}
-              {activeMode === "custom" && (
-                <div className="border border-white/[0.05] rounded-xl bg-[#090909]/60 p-4 animate-fadeSlideUp">
+            {/* DETAILS FORMULAIRE SELON LE MODE */}
+            {showThemeConfig && activeMode === "custom" && (
+              <div className="border border-white/[0.05] rounded-xl bg-[#090909]/60 p-4 animate-fadeSlideUp">
                   <h4 className="font-condensed font-bold text-xs text-white mb-3 uppercase tracking-widest border-b border-white/[0.05] pb-1">
                     Rédiger le Sujet de l'Arène
                   </h4>
@@ -933,7 +1467,7 @@ export default function AIDebate() {
                 </div>
               )}
 
-              {activeMode === "gemini-theme" && (
+              {showThemeConfig && activeMode === "gemini-theme" && (
                 <div className="border border-white/[0.05] rounded-xl bg-[#090909]/60 p-4 animate-fadeSlideUp">
                   <h4 className="font-condensed font-bold text-xs text-white mb-2 uppercase tracking-widest border-b border-white/[0.05] pb-1">
                     Atelier de génération de Thèses
@@ -942,7 +1476,7 @@ export default function AIDebate() {
                     <input 
                       type="text" 
                       placeholder="ex: Climat, Espace, Génétique..." 
-                      value={keyword}
+                      value={keyword} 
                       onChange={e => setKeyword(e.target.value)}
                       className="flex-1 bg-black border border-white/10 rounded px-2 py-1 text-xs text-white placeholder-gray-600 focus:outline-none focus:border-[#00f5c4]"
                       onKeyDown={e => e.key === "Enter" && handleKeywordSearch()}
@@ -974,10 +1508,22 @@ export default function AIDebate() {
               )}
 
               {/* CONTRÔLE DES PARAMÈTRES DU STUDIO */}
-              <div className="border border-white/[0.05] rounded-xl bg-[#0a0a0a]/80 p-4 flex flex-col gap-4">
-                <h3 className="font-condensed font-bold text-xs tracking-wider uppercase text-gray-400 border-b border-white/[0.05] pb-1.5">
-                  RÉGLAGES DES RETENUES & TONALITÉ
-                </h3>
+              {showToneSettings && (
+                <div className="border border-white/[0.05] rounded-xl bg-[#0a0a0a]/80 p-4 flex flex-col gap-4">
+                  <div className="flex items-center justify-between border-b border-white/[0.05] pb-1.5">
+                    <h3 className="font-condensed font-bold text-xs tracking-wider uppercase text-gray-400 flex items-center gap-1.5">
+                      <Sliders className="w-3.5 h-3.5 text-[#00f5c4]" />
+                      RÉGLAGES DES RETENUES & TONALITÉ
+                    </h3>
+                    <button
+                      onClick={() => handleToggleToneSettings(false)}
+                      className="flex items-center gap-1 px-1.5 py-0.5 text-gray-500 hover:text-white bg-white/[0.02] hover:bg-white/[0.06] border border-white/[0.05] rounded text-[10px] font-condensed uppercase tracking-wider cursor-pointer transition-colors"
+                      title="Masquer les réglages des retenues et tonalités"
+                    >
+                      <EyeOff className="w-3 h-3" />
+                      <span>Masquer</span>
+                    </button>
+                  </div>
 
                 {/* Ton du débat */}
                 <div>
@@ -1049,6 +1595,7 @@ export default function AIDebate() {
                   </div>
                 </div>
               </div>
+            )}
 
               {/* 🔑 GESTION DES CLÉS API MODÈLES */}
               <div className="border border-white/[0.05] rounded-xl bg-[#0a0a0a]/80 p-4 flex flex-col gap-3">
@@ -1070,12 +1617,12 @@ export default function AIDebate() {
                     </p>
                     
                     {[
-                      { id: "chatgpt", label: "OpenAI Clé API (ChatGPT)", placeholder: "sk-proj-...", color: "#10a37f" },
-                      { id: "claude", label: "Anthropic Clé API (Claude)", placeholder: "sk-ant-...", color: "#d97706" },
-                      { id: "gemini", label: "Gemini Clé API", placeholder: "AIzaSy...", color: "#3b82f6" },
-                      { id: "deepseek", label: "DeepSeek Clé API", placeholder: "sk-...", color: "#0a59f7" },
-                      { id: "mistral", label: "Mistral Clé API", placeholder: "...", color: "#ff5400" },
-                      { id: "grok", label: "Grok xAI Clé API", placeholder: "xai-...", color: "#fbaf00" }
+                      { id: "chatgpt", label: "OpenAI Clé API (ChatGPT)", placeholder: "sk-proj-...", color: "#10a37f", link: "https://platform.openai.com/api-keys", provider: "OpenAI Platform" },
+                      { id: "claude", label: "Anthropic Clé API (Claude)", placeholder: "sk-ant-...", color: "#d97706", link: "https://console.anthropic.com/settings/keys", provider: "Anthropic Console" },
+                      { id: "gemini", label: "Gemini Clé API (Google)", placeholder: "AIzaSy...", color: "#3b82f6", link: "https://aistudio.google.com/app/apikey", provider: "Google AI Studio" },
+                      { id: "deepseek", label: "DeepSeek Clé API", placeholder: "sk-...", color: "#0a59f7", link: "https://platform.deepseek.com/api_keys", provider: "DeepSeek Platform" },
+                      { id: "mistral", label: "Mistral Clé API", placeholder: "...", color: "#ff5400", link: "https://console.mistral.ai/api-keys/", provider: "Mistral La Plateforme" },
+                      { id: "grok", label: "Grok xAI Clé API", placeholder: "xai-...", color: "#fbaf00", link: "https://console.x.ai/", provider: "xAI Console" }
                     ].map(keyDef => (
                       <div key={keyDef.id} className="flex flex-col gap-1">
                         <div className="flex justify-between items-center">
@@ -1083,15 +1630,27 @@ export default function AIDebate() {
                             <span className="w-1.5 h-1.5 rounded-full animate-pulse" style={{ backgroundColor: keyDef.color }} />
                             {keyDef.label}
                           </label>
-                          {apiKeys[keyDef.id] ? (
-                            <span className="text-[9px] text-[#00f5c4] font-semibold flex items-center gap-0.5">
-                              ✓ active
-                            </span>
-                          ) : (
-                            <span className="text-[9px] text-gray-600 font-normal">
-                              (Secours Gemini)
-                            </span>
-                          )}
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={keyDef.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-[9px] text-blue-400 hover:text-blue-300 flex items-center gap-0.5 hover:underline font-semibold"
+                              title={`Obtenir une clé API sur ${keyDef.provider}`}
+                            >
+                              <span>Obtenir la clé</span>
+                              <ExternalLink className="w-2.5 h-2.5" />
+                            </a>
+                            {apiKeys[keyDef.id] ? (
+                              <span className="text-[9px] text-[#00f5c4] font-semibold flex items-center gap-0.5">
+                                ✓ active
+                              </span>
+                            ) : (
+                              <span className="text-[9px] text-gray-600 font-normal">
+                                (Secours Gemini)
+                              </span>
+                            )}
+                          </div>
                         </div>
                         <div className="flex gap-1.5 relative">
                           <input 
@@ -1099,7 +1658,7 @@ export default function AIDebate() {
                             placeholder={keyDef.placeholder}
                             value={apiKeys[keyDef.id] || ""}
                             onChange={e => handleSaveApiKey(keyDef.id, e.target.value)}
-                            className="w-full bg-black border border-white/10 rounded px-2.5 py-1 text-xs text-white placeholder-gray-800 font-mono focus:outline-none focus:border-[#00f5c4]"
+                            className="w-full bg-black border border-white/10 rounded px-2.5 py-1 text-xs text-white placeholder-gray-800 font-mono focus:outline-none focus:border-[#00f5c4] pr-14"
                           />
                           <button
                             type="button"
@@ -1129,6 +1688,25 @@ export default function AIDebate() {
                   </div>
                 )}
               </div>
+
+              {/* RADAR PHILOSOPHIQUE 2D & CARTE DES IDÉOLOGIES */}
+              {showRadar && (
+                <PhilosophicalRadar2D 
+                  messages={messages} 
+                  onHide={() => handleToggleRadar(false)} 
+                />
+              )}
+
+              {/* VOTE & SENTIMENT DU PUBLIC EN DIRECT */}
+              {showAudienceVote && (
+                <LiveAudienceVote 
+                  activeAgents={AGENTS.filter(a => activeAgentsFlags[a.id])}
+                  onCheerAll={() => {
+                    setMessages(prev => prev.map(m => ({ ...m, claps: (m.claps || 0) + 1 })));
+                  }}
+                  onHide={() => handleToggleAudienceVote(false)}
+                />
+              )}
 
               {/* METRIQUES LIVE DE LA SÉANCE */}
               {messages.length > 0 && (
@@ -1184,194 +1762,626 @@ export default function AIDebate() {
               )}
 
             </section>
+          )}
 
             {/* ── COLONNE DE DROITE : ARÈNE DE DISCUSSION EN DIRECT ───────────── */}
-            <section className="flex-1 flex flex-col overflow-hidden pb-4">
+            <section className="flex-1 flex flex-col transition-all duration-300 w-full min-w-0">
               
-              {/* Active Hero Topic Banner */}
-              <div className={`mt-2 p-5 bg-white/[0.01] border rounded-xl relative overflow-hidden shrink-0 transition-all duration-300 ${isClosed ? 'border-white/[0.02]' : 'border-white/[0.06] bg-gradient-to-b from-[#0a0a0a] to-[#040404]'}`}>
-                <div className="flex items-center gap-2.5 mb-2 text-xs font-bold font-condensed text-[#666] uppercase">
-                  {activeTopic.isCustom ? (
-                    <span className="text-[#b07aff] tracking-widest bg-[#b07aff]/10 px-2 py-0.5 rounded border border-[#b07aff]/15">SUJET PERSONNALISÉ</span>
-                  ) : (
-                    <span className="text-[#00f5c4] tracking-widest">{activeTopic.category}</span>
+              {/* ── BARRE DE VISIBILITÉ, CONTRÔLE PLEIN ÉCRAN & BOUTON BIG ─── */}
+              <div className="p-1 px-1.5 bg-[#0a0a0d] border border-white/[0.08] rounded-lg flex flex-wrap items-center justify-between gap-1 shadow-sm shrink-0">
+                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                  {/* BOUTON LANCER LE DÉBAT DIRECT (Visible dès le haut en phase idle) */}
+                  {phase === "idle" && (
+                    <button
+                      onClick={handleStart}
+                      className="px-3.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider bg-[#00f5c4] hover:bg-[#00e0b0] text-black shadow-md shadow-[#00f5c4]/30 flex items-center gap-1.5 cursor-pointer transition-all ring-2 ring-[#00f5c4]/50 shrink-0"
+                      title="Lancer immédiatement le débat"
+                    >
+                      <Play className="w-3.5 h-3.5 fill-current text-black" />
+                      <span>Lancer le débat</span>
+                    </button>
                   )}
-                  <span className="opacity-40">•</span>
-                  <span>Session {typeof activeTopic.id === "number" ? activeTopic.id + 1 : "Live"}</span>
-                  <span className="opacity-40">•</span>
-                  <span className="capitalize text-gray-500">Ton : {debateTone}</span>
+
+                  {/* Accès direct : Tout Masquer / Tout Ouvrir */}
+                  {isAllSideModulesHidden ? (
+                    <button
+                      onClick={handleShowAllSideModules}
+                      className="px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider bg-[#00f5c4]/15 hover:bg-[#00f5c4]/25 text-[#00f5c4] border border-[#00f5c4]/40 cursor-pointer transition-all flex items-center gap-1 shadow-sm"
+                      title="Afficher la configuration du thème, les réglages, la boussole et le vote"
+                    >
+                      <Eye className="w-3 h-3 text-[#00f5c4]" />
+                      <span>Tout Ouvrir</span>
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleHideAllSideModules}
+                      className="px-2.5 py-1 rounded-lg text-xs font-bold uppercase tracking-wider bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border border-amber-500/40 cursor-pointer transition-all flex items-center gap-1 shadow-sm"
+                      title="Masquer les panneaux latéraux pour libérer tout l'espace pour le débat"
+                    >
+                      <EyeOff className="w-3 h-3 text-amber-400" />
+                      <span>Tout Masquer</span>
+                    </button>
+                  )}
+
+                  {/* BOUTON BIG : Agrandir la taille de police */}
+                  <button
+                    onClick={handleCycleFontSize}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider border cursor-pointer transition-all flex items-center gap-1.5 shadow-sm ${
+                      fontSizeLevel !== "normal"
+                        ? "bg-purple-600/35 text-purple-200 border-purple-400 ring-2 ring-purple-400/40"
+                        : "bg-white/[0.06] hover:bg-white/[0.12] text-gray-200 hover:text-white border-white/20"
+                    }`}
+                    title="Agrandir la taille de police (BIG)"
+                  >
+                    <Type className="w-3.5 h-3.5 text-purple-400" />
+                    <span className="font-black text-xs">BIG</span>
+                    {fontSizeLevel !== "normal" && (
+                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
+                    )}
+                  </button>
+
+                  {/* BOUTON VITESSE ULTRA-RAPIDE */}
+                  <button
+                    onClick={handleToggleTurboSpeed}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider border cursor-pointer transition-all flex items-center gap-1.5 shadow-sm ${
+                      isTurboSpeed
+                        ? "bg-amber-500/25 text-amber-300 border-amber-400/80 ring-2 ring-amber-400/30"
+                        : "bg-white/[0.06] hover:bg-white/[0.12] text-gray-400 hover:text-white border-white/20"
+                    }`}
+                    title={isTurboSpeed ? "Vitesse Rapide active (répliques brèves, sans latence)" : "Passer en vitesse rapide"}
+                  >
+                    <Zap className={`w-3.5 h-3.5 ${isTurboSpeed ? "text-amber-400 fill-amber-400" : "text-gray-400"}`} />
+                    <span className="font-bold text-xs">{isTurboSpeed ? "⚡ RAPIDE" : "STANDARD"}</span>
+                  </button>
+
+                  {/* SÉLECTEUR DE MODE D'AFFICHAGE : DÉFILEMENT CONFORT VS PAR FICHE */}
+                  <div className="flex items-center bg-black/60 border border-white/10 rounded-lg p-0.5 shadow-sm shrink-0">
+                    <button
+                      onClick={() => handleSetDisplayMode("stream")}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                        displayMode === "stream"
+                          ? "bg-[#00f5c4] text-black shadow font-extrabold"
+                          : "text-gray-400 hover:text-white"
+                      }`}
+                      title="Mode Défilement Confort : lisez et scrollez librement à tout moment, sans coupure ni saut d'écran intempestif"
+                    >
+                      <ScrollText className="w-3.5 h-3.5" />
+                      <span>Défilement</span>
+                    </button>
+                    <button
+                      onClick={() => handleSetDisplayMode("zen")}
+                      className={`flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-bold transition-all cursor-pointer ${
+                        displayMode === "zen"
+                          ? "bg-[#00f5c4] text-black shadow font-extrabold"
+                          : "text-gray-400 hover:text-white"
+                      }`}
+                      title="Mode Par Fiche : affiche une seule intervention à la fois sur un écran fixe"
+                    >
+                      <BookOpen className="w-3.5 h-3.5" />
+                      <span className="hidden sm:inline">Par fiche</span>
+                    </button>
+                  </div>
+
+                  {/* COMMUTATEUR DIRECT DÉFILEMENT AUTOMATIQUE (EN MODE DÉFILEMENT) */}
+                  {displayMode === "stream" && (
+                    <button
+                      onClick={() => {
+                        setAutoScrollActive(prev => {
+                          const next = !prev;
+                          if (next) {
+                            setUnreadCount(0);
+                            setLastUnreadSpeaker(null);
+                            isProgrammaticScrollRef.current = true;
+                            bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+                            setTimeout(() => { isProgrammaticScrollRef.current = false; }, 600);
+                          }
+                          return next;
+                        });
+                      }}
+                      className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-bold transition-all border cursor-pointer select-none ${
+                        autoScrollActive
+                          ? "bg-emerald-500/15 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/25"
+                          : "bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30"
+                      }`}
+                      title={autoScrollActive ? "Auto-défilement ACTIF : suit les nouvelles répliques. Cliquez pour figer la vue et lire tranquillement sans bouger." : "Auto-défilement EN PAUSE : l'écran reste strictement fixe. Cliquez pour réactiver le suivi vers le bas."}
+                    >
+                      {autoScrollActive ? (
+                        <>
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+                          <span className="hidden md:inline">Suivi auto :</span>
+                          <span>ACTIF</span>
+                        </>
+                      ) : (
+                        <>
+                          <Pause className="w-3 h-3 text-amber-300 shrink-0" />
+                          <span className="hidden md:inline">Suivi auto :</span>
+                          <span>FIGÉ</span>
+                        </>
+                      )}
+                    </button>
+                  )}
+
+                  {/* BADGE ORDRE ALÉATOIRE */}
+                  <div 
+                    className="px-2 py-1 rounded-lg text-[11px] font-semibold tracking-wide bg-blue-500/15 text-blue-300 border border-blue-500/30 flex items-center gap-1 shadow-sm hidden md:flex"
+                    title="L'orateur de départ et les prises de parole sont sélectionnés de manière aléatoire parmi les IA actives"
+                  >
+                    <Shuffle className="w-3 h-3 text-blue-400" />
+                    <span>🎲 Aléatoire</span>
+                  </div>
                 </div>
-                <h1 className="text-lg md:text-2xl font-extrabold font-condensed tracking-tight text-white mb-2 leading-snug">
+
+                {/* Toggles des modules latéraux - Tous toujours visibles */}
+                <div className="flex flex-wrap items-center gap-1 shrink-0">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mr-0.5 hidden sm:inline">
+                    Modules :
+                  </span>
+                  <button
+                    onClick={() => {
+                      if (!isSidebarVisible) handleToggleSidebar(true);
+                      handleToggleThemeConfig();
+                    }}
+                    className={`px-2 py-0.5 rounded-md text-xs font-bold uppercase tracking-wider border cursor-pointer transition-all flex items-center gap-1 ${
+                      isSidebarVisible && showThemeConfig
+                        ? "bg-[#00f5c4]/15 text-[#00f5c4] border-[#00f5c4]/40"
+                        : "bg-white/[0.03] text-gray-400 border-white/[0.08] hover:text-gray-200"
+                    }`}
+                    title="Afficher/masquer configuration thème"
+                  >
+                    {isSidebarVisible && showThemeConfig ? <CheckCircle className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5 opacity-50" />}
+                    Thème
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!isSidebarVisible) handleToggleSidebar(true);
+                      handleToggleToneSettings();
+                    }}
+                    className={`px-2 py-0.5 rounded-md text-xs font-bold uppercase tracking-wider border cursor-pointer transition-all flex items-center gap-1 ${
+                      isSidebarVisible && showToneSettings
+                        ? "bg-[#00f5c4]/15 text-[#00f5c4] border-[#00f5c4]/40"
+                        : "bg-white/[0.03] text-gray-400 border-white/[0.08] hover:text-gray-200"
+                    }`}
+                    title="Afficher/masquer retenues & tonalités"
+                  >
+                    {isSidebarVisible && showToneSettings ? <CheckCircle className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5 opacity-50" />}
+                    Retenues
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!isSidebarVisible) handleToggleSidebar(true);
+                      handleToggleRadar();
+                    }}
+                    className={`px-2 py-0.5 rounded-md text-xs font-bold uppercase tracking-wider border cursor-pointer transition-all flex items-center gap-1 ${
+                      isSidebarVisible && showRadar
+                        ? "bg-[#00f5c4]/15 text-[#00f5c4] border-[#00f5c4]/40"
+                        : "bg-white/[0.03] text-gray-400 border-white/[0.08] hover:text-gray-200"
+                    }`}
+                    title="Afficher/masquer boussole idéologique"
+                  >
+                    {isSidebarVisible && showRadar ? <CheckCircle className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5 opacity-50" />}
+                    Boussole
+                  </button>
+                  <button
+                    onClick={() => {
+                      if (!isSidebarVisible) handleToggleSidebar(true);
+                      handleToggleAudienceVote();
+                    }}
+                    className={`px-2 py-0.5 rounded-md text-xs font-bold uppercase tracking-wider border cursor-pointer transition-all flex items-center gap-1 ${
+                      isSidebarVisible && showAudienceVote
+                        ? "bg-[#00f5c4]/15 text-[#00f5c4] border-[#00f5c4]/40"
+                        : "bg-white/[0.03] text-gray-400 border-white/[0.08] hover:text-gray-200"
+                    }`}
+                    title="Afficher/masquer vote du public"
+                  >
+                    {isSidebarVisible && showAudienceVote ? <CheckCircle className="w-2.5 h-2.5" /> : <EyeOff className="w-2.5 h-2.5 opacity-50" />}
+                    Vote
+                  </button>
+                </div>
+              </div>
+              
+              {/* Active Hero Topic Banner (Compact & Collapsible - Réduit de 20%) */}
+              <div className={`mt-0.5 p-1 px-1.5 bg-white/[0.01] border rounded-lg relative overflow-hidden shrink-0 transition-all duration-300 ${isClosed ? 'border-white/[0.04]' : 'border-white/[0.08] bg-gradient-to-b from-[#0e0e12] to-[#060608]'}`}>
+                <div className="flex items-center justify-between gap-2 mb-0.5">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-gray-400 uppercase truncate">
+                    {activeTopic.isCustom ? (
+                      <span className="text-[#b07aff] tracking-wider bg-[#b07aff]/15 px-1.5 py-0.5 rounded border border-[#b07aff]/25 shrink-0 text-[10px]">SUJET PERSO</span>
+                    ) : (
+                      <span className="text-[#00f5c4] tracking-wider shrink-0 text-[10px]">{activeTopic.category}</span>
+                    )}
+                    <span className="opacity-40">•</span>
+                    <span className="shrink-0 text-[10px]">Session {typeof activeTopic.id === "number" ? activeTopic.id + 1 : "Live"}</span>
+                    <span className="opacity-40">•</span>
+                    <span className="capitalize text-gray-400 truncate text-[10px]">Ton : {debateTone}</span>
+                  </div>
+
+                  {/* Bouton Réduire / Déplier le bandeau */}
+                  <button
+                    onClick={() => handleToggleTopicBanner()}
+                    className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/[0.04] hover:bg-white/[0.08] text-gray-300 hover:text-white border border-white/[0.08] text-[11px] font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0"
+                    title={isTopicBannerCollapsed ? "Déplier le descriptif du sujet et les actions" : "Réduire le bandeau pour libérer l'espace du débat"}
+                  >
+                    {isTopicBannerCollapsed ? (
+                      <>
+                        <ChevronDown className="w-2.5 h-2.5 text-[#00f5c4]" />
+                        <span>Déplier</span>
+                      </>
+                    ) : (
+                      <>
+                        <ChevronUp className="w-2.5 h-2.5 text-gray-400" />
+                        <span>Compacter</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+
+                <h1 className={`font-bold tracking-normal text-white leading-snug ${
+                  fontSizeLevel === "xlarge" 
+                    ? "text-base sm:text-lg md:text-xl" 
+                    : fontSizeLevel === "large" 
+                    ? "text-sm sm:text-base md:text-lg" 
+                    : "text-xs sm:text-sm md:text-base"
+                } ${isTopicBannerCollapsed ? 'truncate mb-0' : 'line-clamp-2 mb-0.5'}`}>
                   {activeTopic.title}
                 </h1>
-                <p className="text-xs md:text-sm text-gray-400 max-w-4xl leading-relaxed">
-                  {activeTopic.description}
-                </p>
 
-                {messages.length > 0 && (
-                  <div className="flex items-center justify-between gap-4 mt-3 pt-3.5 border-t border-white/[0.05]">
-                    <div className="flex gap-5">
-                      <div>
-                        <div className="text-base font-bold font-condensed text-[#00f5c4] leading-none">{messages.length}</div>
-                        <div className="text-[9px] tracking-wider text-[#555] font-condensed uppercase mt-0.5">Interventions</div>
-                      </div>
-                      <div>
-                        <div className="text-base font-bold font-condensed text-[#00f5c4] leading-none">{roundCount}</div>
-                        <div className="text-[9px] tracking-wider text-[#555] font-condensed uppercase mt-0.5">Planches</div>
-                      </div>
-                    </div>
-                    <div>
-                      <button 
-                        onClick={handleReset} 
-                        className="flex items-center gap-1 bg-transparent border border-white/5 hover:border-white/10 hover:bg-white/[0.03] text-gray-500 hover:text-white px-2 py-1 rounded text-[10px] font-bold font-condensed uppercase tracking-wider transition-colors cursor-pointer"
+                {!isTopicBannerCollapsed && (
+                  <>
+                    <p 
+                      onClick={() => handleToggleTopicBanner(true)}
+                      className={`${fontSizeLevel === "xlarge" ? "text-xs sm:text-sm" : fontSizeLevel === "large" ? "text-[11px] sm:text-xs" : "text-[10px] md:text-[11px]"} text-gray-300 max-w-4xl leading-relaxed line-clamp-1 hover:line-clamp-none transition-all cursor-pointer`}
+                      title="Cliquez pour compacter / déplier"
+                    >
+                      {activeTopic.description}
+                    </p>
+
+                    {/* Quick Interactive Action Bar - Compacte & Toujours 100% visible sans défilement */}
+                    <div className="flex flex-wrap items-center gap-1.5 mt-1.5 pt-1.5 border-t border-white/[0.08]">
+                      <button
+                        onClick={() => setIsDuelOpen(true)}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500/15 hover:bg-red-500/25 border border-red-500/40 text-red-200 font-bold text-[11px] uppercase tracking-wider cursor-pointer transition-all shrink-0"
                       >
-                        <ListRestart className="w-3 h-3" />
-                        Réinitialiser l'Arène
+                        <Swords className="w-3 h-3 text-red-400" />
+                        <span>Duel 1v1</span>
+                      </button>
+
+                      <button
+                        onClick={() => setIsBreakingNewsOpen(true)}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-200 font-bold text-[11px] uppercase tracking-wider cursor-pointer transition-all shrink-0"
+                      >
+                        <Zap className="w-3 h-3 text-amber-400" />
+                        <span>Coup de Théâtre</span>
+                      </button>
+
+                      <button
+                        onClick={() => setIsTreatyOpen(true)}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-500/15 hover:bg-purple-500/25 border border-purple-500/40 text-purple-200 font-bold text-[11px] uppercase tracking-wider cursor-pointer transition-all shrink-0"
+                      >
+                        <Scroll className="w-3 h-3 text-purple-400" />
+                        <span>Traité</span>
+                      </button>
+
+                      <button
+                        id="quick-save-drive-btn"
+                        onClick={() => setIsDriveModalOpen(true)}
+                        className="flex items-center gap-1 px-2 py-0.5 rounded-md bg-blue-500/15 hover:bg-blue-500/25 border border-blue-500/40 text-blue-200 font-bold text-[11px] uppercase tracking-wider cursor-pointer transition-all ml-auto shrink-0"
+                      >
+                        <Cloud className="w-3 h-3 text-blue-400" />
+                        <span>Drive</span>
                       </button>
                     </div>
-                  </div>
+                  </>
                 )}
-              </div>
 
-              {/* Flux de messages & Verdict */}
-              <div className="flex-1 overflow-y-auto px-1 py-4 flex flex-col gap-4 min-h-0 h-full mt-1">
-                
-                {messages.length === 0 && phase === "idle" && (
-                  <div className="flex-1 flex flex-col items-center justify-center py-16 text-center max-w-lg mx-auto">
-                    <div className="flex gap-2.5 mb-5 select-none">
-                      {AGENTS.map(agent => (
-                        <div 
-                          key={agent.id} 
-                          style={{ borderColor: agent.border, color: agent.color, background: agent.dim }}
-                          className="w-10 h-10 rounded-full border flex items-center justify-center text-base font-condensed shadow shadow-black"
-                        >
-                          {agent.symbol}
-                        </div>
-                      ))}
+                {messages.length > 0 && (
+                  <div className="flex items-center justify-between gap-3 mt-1.5 pt-1.5 border-t border-white/[0.04] text-[10px]">
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold font-condensed text-[#00f5c4] leading-none">{messages.length}</span>
+                        <span className="text-[9px] tracking-wider text-[#666] font-condensed uppercase">Interventions</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="font-bold font-condensed text-[#00f5c4] leading-none">{roundCount}</span>
+                        <span className="text-[9px] tracking-wider text-[#666] font-condensed uppercase">Planches</span>
+                      </div>
                     </div>
-                    <h3 className="font-condensed text-base font-bold text-gray-300 uppercase tracking-widest mb-1.5 flex items-center gap-1.5">
-                      🏛️ L'Arène Dialectique est Ouverte
-                    </h3>
-                    <p className="text-xs text-[#555] leading-relaxed mb-5">
-                      Le panel d'orateurs synthétiques est en veille. Personnalisez l'éventuelle participation d'orateurs ou cliquez pour amorcer l'éloquence.
-                    </p>
                     <button 
-                      onClick={handleStart} 
-                      className="flex items-center gap-2 bg-[#00f5c4] hover:bg-[#00e0b0] text-[#050505] border-none font-bold font-condensed tracking-wider text-xs px-5 py-2.5 rounded shadow-lg shadow-[#00f5c4]/10 transition-all cursor-pointer uppercase"
+                      onClick={handleReset} 
+                      className="flex items-center gap-1 bg-transparent border border-white/5 hover:border-white/10 hover:bg-white/[0.03] text-gray-500 hover:text-white px-1.5 py-0.5 rounded text-[9px] font-bold font-condensed uppercase tracking-wider transition-colors cursor-pointer"
                     >
-                      <Play className="w-3.5 h-3.5 fill-current" />
-                      Lancer les délibérations
+                      <ListRestart className="w-2.5 h-2.5" />
+                      Réinitialiser
                     </button>
                   </div>
                 )}
+              </div>
 
-                {/* Bouclage de messages */}
-                {messages.map(msg => (
-                  <MessageBubble key={msg.id} msg={msg} onClap={() => handleClapMessage(msg.id)} />
-                ))}
-
-                {/* Indicateur de réflexion */}
-                {loadingAgent && (
-                  <ThinkingBubble agentId={loadingAgent} />
-                )}
-
-                {/* Synthèse de closing */}
-                {phase === "closing" && closingProgress && (
-                  <div className="flex items-center gap-3 p-4 bg-orange-500/[0.03] border border-orange-500/10 rounded-lg animate-fadeSlideUp">
-                    <div className="flex gap-1 shrink-0">
-                      {[0,1,2].map(i => (
-                        <div key={i} className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
-                      ))}
-                    </div>
-                    <span className="text-xs text-orange-400 uppercase font-bold tracking-wider font-condensed">{closingProgress}</span>
-                  </div>
-                )}
-
-                {/* Affichage du Verdict détaillé de la Cour Éthique */}
-                {verdict && (
-                  <VerdictDisplay widgetVerdict={verdict} />
-                )}
-
-                {/* Synthèse textuelle */}
-                {summary && (
-                  <SummaryWidget summary={summary} topic={activeTopic} messagesCount={messages.length} />
-                )}
-
-                {isClosed && !closingProgress && (
-                  <div className="p-4 md:p-5 bg-emerald-500/[0.01] border border-emerald-500/10 rounded-xl mt-2 animate-fadeSlideUp">
-                    <div className="flex items-start gap-3">
-                      <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
-                      <div>
-                        <div className="font-condensed font-bold text-sm text-emerald-400 tracking-wider uppercase mb-1">PROGÈS-VERBAL SAUVEGARDÉ</div>
-                        <p className="text-[11px] text-[#777] leading-relaxed">
-                          La table ronde asymétrique a été validée et enregistrée avec succès. Vous pouvez consulter les archives de la session sous l'onglet "Archives" du studio de débat.
-                        </p>
-                        <div className="flex gap-2.5 mt-3">
-                          <button 
-                            onClick={handleReset} 
-                            className="bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 text-emerald-400 font-condensed font-bold text-[10px] uppercase tracking-wider py-1.5 px-3.5 rounded cursor-pointer transition-colors"
+              {/* Flux de messages & Verdict : Mode Sans scroll (Zen) vs Flux Complet */}
+              {displayMode === "zen" ? (
+                <div className="flex-1 flex flex-col min-h-[360px] mt-0">
+                  <ZenDebateReader
+                    messages={messages}
+                    activeTopic={activeTopic}
+                    loadingAgent={loadingAgent}
+                    phase={phase}
+                    zenActiveIndex={zenActiveIndex}
+                    onSelectIndex={setZenActiveIndex}
+                    isReadingWaiting={isReadingWaiting}
+                    readingCountdown={readingCountdown}
+                    isReadingPaused={isReadingPaused}
+                    readingPace={readingPace}
+                    waitingNextSpeaker={waitingNextSpeaker}
+                    onToggleReadingPause={handleToggleReadingPause}
+                    onSkipReadingWait={handleSkipReadingWait}
+                    onChangeReadingPace={handleChangeReadingPace}
+                    onStart={handleStart}
+                    onContinue={handleContinue}
+                    onPause={handlePause}
+                    onCloseDebate={handleStopAndSummarize}
+                    onReset={handleReset}
+                    onClapMessage={handleClapMessage}
+                    getHeaders={getHeaders}
+                    fontSizeLevel={fontSizeLevel}
+                    verdict={verdict}
+                    summary={summary}
+                    closingProgress={closingProgress}
+                    agentsList={AGENTS}
+                  />
+                </div>
+              ) : (
+                <div 
+                  ref={streamContainerRef}
+                  onScroll={handleStreamScroll}
+                  onWheel={handleUserWheel}
+                  onTouchMove={handleUserTouchMove}
+                  className="flex-1 overflow-y-auto px-0.5 py-1 flex flex-col gap-1.5 min-h-[360px] mt-0 relative scroll-smooth [overflow-anchor:auto]"
+                >
+                  {/* RUBAN D'ACCÈS RAPIDE AUX ORATEURS (pour naviguer et scroller sereinement) */}
+                  {messages.length > 1 && (
+                    <div className="sticky top-0 z-20 bg-[#070709]/95 backdrop-blur-md border-b border-white/[0.08] px-2 py-1 flex items-center gap-1.5 overflow-x-auto text-xs shrink-0 select-none shadow-sm">
+                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-gray-400 flex items-center gap-1 shrink-0 mr-1">
+                        <Navigation className="w-3 h-3 text-[#00f5c4]" />
+                        <span className="hidden sm:inline">Repères :</span>
+                      </span>
+                      <div className="flex items-center gap-1 overflow-x-auto py-0.5">
+                        {messages.map((m, idx) => (
+                          <button
+                            key={m.id}
+                            onClick={() => scrollToMessage(m.id)}
+                            className="flex items-center gap-1 px-2 py-0.5 rounded-full border border-white/10 hover:border-[#00f5c4]/60 bg-white/[0.03] hover:bg-[#00f5c4]/15 text-gray-300 hover:text-white shrink-0 text-[11px] font-medium transition-all cursor-pointer"
+                            title={`Aller directement à la prise de parole #${idx + 1} de ${m.agentName}`}
                           >
-                            Entamer un nouveau débat
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: m.agentColor }} />
+                            <span className="font-bold">#{idx + 1} {m.agentName}</span>
                           </button>
+                        ))}
+                      </div>
+                      <div className="ml-auto flex items-center gap-1 shrink-0 pl-1 border-l border-white/10">
+                        <button
+                          onClick={() => streamContainerRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+                          className="p-1 px-1.5 rounded bg-white/5 hover:bg-white/15 text-gray-400 hover:text-white text-[10px] flex items-center gap-0.5 cursor-pointer font-bold"
+                          title="Remonter tout en haut du débat"
+                        >
+                          <ArrowUp className="w-3 h-3" />
+                          <span className="hidden md:inline">Haut</span>
+                        </button>
+                        <button
+                          onClick={resumeAutoScroll}
+                          className="p-1 px-1.5 rounded bg-white/5 hover:bg-white/15 text-gray-400 hover:text-white text-[10px] flex items-center gap-0.5 cursor-pointer font-bold"
+                          title="Descendre directement au dernier message"
+                        >
+                          <ArrowDown className="w-3 h-3" />
+                          <span className="hidden md:inline">Bas</span>
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {messages.length === 0 && phase === "idle" && (
+                    <div className="flex-1 flex flex-col items-center justify-center py-1.5 md:py-2.5 text-center max-w-sm mx-auto my-auto shrink-0 animate-fadeSlideUp">
+                      <div className="flex gap-1.5 mb-1.5 select-none">
+                        {AGENTS.map(agent => (
+                          <div 
+                            key={agent.id} 
+                            style={{ borderColor: agent.border, color: agent.color, background: agent.dim }}
+                            className="w-6 h-6 md:w-7 md:h-7 rounded-full border flex items-center justify-center text-xs font-bold shadow shadow-black"
+                          >
+                            {agent.symbol}
+                          </div>
+                        ))}
+                      </div>
+                      <h3 className="text-xs md:text-sm font-bold text-gray-200 uppercase tracking-wider mb-0.5 flex items-center gap-1.5">
+                        <span>🏛️ L'Arène Dialectique est Prête</span>
+                      </h3>
+                      <p className="text-[11px] text-gray-400 leading-tight mb-2 max-w-xs line-clamp-2">
+                        Les orateurs synthétiques sont prêts. Cliquez sur le bouton ci-dessous pour amorcer les débats.
+                      </p>
+                      <button 
+                        onClick={handleStart} 
+                        className="flex items-center gap-2 bg-[#00f5c4] hover:bg-[#00e0b0] text-black border-none font-bold text-xs sm:text-sm px-4 py-1.5 rounded-lg shadow-lg shadow-[#00f5c4]/30 transition-all cursor-pointer uppercase tracking-wider ring-2 ring-[#00f5c4]/50"
+                      >
+                        <Play className="w-3.5 h-3.5 fill-current text-black" />
+                        <span>Lancer le débat</span>
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Bouclage de messages avec ancres individuelles pour navigation sereine */}
+                  {messages.map(msg => (
+                    <div key={msg.id} id={`msg-${msg.id}`} className="transition-all duration-300 rounded-xl">
+                      <MessageBubble 
+                        msg={msg} 
+                        topicTitle={activeTopic.title}
+                        getHeaders={getHeaders}
+                        fontSizeLevel={fontSizeLevel}
+                        onClap={() => handleClapMessage(msg.id)} 
+                      />
+                    </div>
+                  ))}
+
+                  {/* Indicateur de réflexion */}
+                  {loadingAgent && (
+                    <ThinkingBubble agentId={loadingAgent} />
+                  )}
+
+                  {/* Pause de lecture sereine entre les orateurs (permet de lire et scroller sans être pressé) */}
+                  {isReadingWaiting && (
+                    <div className="sticky bottom-2 mx-auto z-20 flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-[#0e1015]/95 border border-emerald-500/40 backdrop-blur-md rounded-xl shadow-2xl text-xs text-gray-200 animate-fadeSlideUp max-w-lg w-full">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-6 h-6 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center font-bold text-emerald-400 text-xs shrink-0">
+                          {readingCountdown > 0 ? `${readingCountdown}s` : "∞"}
+                        </div>
+                        <div>
+                          <div className="font-bold text-white text-[11px] flex items-center gap-1.5">
+                            <span>Pause de lecture ({readingPace})</span>
+                            {isReadingPaused && <span className="text-amber-400 font-bold">• Figée pour relecture</span>}
+                          </div>
+                          <div className="text-[10px] text-gray-400 truncate max-w-[200px]">
+                            {waitingNextSpeaker ? `Prochain orateur : ${waitingNextSpeaker}` : "Prise de parole suivante..."}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={handleToggleReadingPause}
+                          className={`px-2 py-1 rounded text-[11px] font-bold cursor-pointer transition-colors ${
+                            isReadingPaused 
+                              ? "bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 border border-amber-500/40"
+                              : "bg-white/10 hover:bg-white/20 text-gray-200"
+                          }`}
+                          title={isReadingPaused ? "Reprendre le décompte" : "Figer le temps pour scroller et lire l'ensemble des arguments sans pression"}
+                        >
+                          {isReadingPaused ? "▶ Reprendre" : "⏸ Pause lecture"}
+                        </button>
+                        <button
+                          onClick={handleSkipReadingWait}
+                          className="px-2.5 py-1 rounded bg-[#00f5c4] hover:bg-[#00e0b0] text-black font-bold text-[11px] cursor-pointer transition-colors"
+                          title="Passer immédiatement à l'orateur suivant"
+                        >
+                          Suivant ⏭
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Synthèse de closing */}
+                  {phase === "closing" && closingProgress && (
+                    <div className="flex items-center gap-3 p-4 bg-orange-500/[0.03] border border-orange-500/10 rounded-lg animate-fadeSlideUp">
+                      <div className="flex gap-1 shrink-0">
+                        {[0,1,2].map(i => (
+                          <div key={i} className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-bounce" style={{ animationDelay: `${i * 0.15}s` }} />
+                        ))}
+                      </div>
+                      <span className="text-xs text-orange-400 uppercase font-bold tracking-wider font-condensed">{closingProgress}</span>
+                    </div>
+                  )}
+
+                  {/* Affichage du Verdict détaillé de la Cour Éthique */}
+                  {verdict && (
+                    <VerdictDisplay widgetVerdict={verdict} />
+                  )}
+
+                  {/* Synthèse textuelle */}
+                  {summary && (
+                    <SummaryWidget summary={summary} topic={activeTopic} messagesCount={messages.length} />
+                  )}
+
+                  {isClosed && !closingProgress && (
+                    <div className="p-4 md:p-5 bg-emerald-500/[0.01] border border-emerald-500/10 rounded-xl mt-2 animate-fadeSlideUp">
+                      <div className="flex items-start gap-3">
+                        <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                        <div>
+                          <div className="font-condensed font-bold text-sm text-emerald-400 tracking-wider uppercase mb-1">PROGÈS-VERBAL SAUVEGARDÉ</div>
+                          <p className="text-[11px] text-[#777] leading-relaxed">
+                            La table ronde asymétrique a été validée et enregistrée avec succès. Vous pouvez consulter les archives de la session sous l'onglet "Archives" du studio de débat.
+                          </p>
+                          <div className="flex gap-2.5 mt-3">
+                            <button 
+                              onClick={handleReset} 
+                              className="bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 text-emerald-400 font-condensed font-bold text-[10px] uppercase tracking-wider py-1.5 px-3.5 rounded cursor-pointer transition-colors"
+                            >
+                              Entamer un nouveau débat
+                            </button>
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                <div ref={bottomRef} className="h-6" />
-              </div>
+                  {/* Notification discrète si l'utilisateur a scrollé vers le haut pour lire (Auto-scroll suspendu) */}
+                  {!autoScrollActive && (
+                    <div 
+                      className="sticky bottom-2 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-[#0d0f14]/95 border border-[#00f5c4]/40 text-white px-3.5 py-1.5 rounded-full shadow-2xl backdrop-blur-md text-xs select-none animate-fadeSlideUp"
+                      title="Votre position de lecture est préservée. Aucun saut automatique."
+                    >
+                      <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
+                      <span className="text-gray-300 text-[11px]">
+                        {unreadCount > 0 
+                          ? `${unreadCount} réplique${unreadCount > 1 ? 's' : ''} en attente (${lastUnreadSpeaker})`
+                          : "Lecture libre • Défilement figé"
+                        }
+                      </span>
+                      <button
+                        onClick={resumeAutoScroll}
+                        className="flex items-center gap-1 bg-[#00f5c4] hover:bg-[#00e0b0] text-black font-bold px-2.5 py-0.5 rounded-full text-[11px] cursor-pointer ml-1 transition-all shadow"
+                      >
+                        <span>Aller au direct</span>
+                        <ArrowDown className="w-3 h-3" />
+                      </button>
+                    </div>
+                  )}
+
+                  <div ref={bottomRef} className="h-6" />
+                </div>
+              )}
 
               {/* BARRE D'ENTRÉE PARTICIPATION DE L'UTILISATEUR HUMAIN */}
               {!isClosed && (
-                <div className="border-t border-white/[0.05] pt-3 pb-2 flex flex-col gap-2 shrink-0 bg-[#050505] z-10">
-                  <form onSubmit={handlePostUserContribution} className="flex gap-2 items-center">
-                    <div className="w-8 h-8 rounded-full bg-blue-500/10 border border-blue-500/20 flex items-center justify-center text-xs shrink-0 select-none">
+                <div className="border-t border-white/[0.06] py-0.5 flex items-center gap-1 shrink-0 bg-[#050505] z-10">
+                  <form onSubmit={handlePostUserContribution} className="flex-1 flex gap-1.5 items-center">
+                    <div className="w-6 h-6 rounded-full bg-blue-500/10 border border-blue-500/25 flex items-center justify-center text-[11px] shrink-0 select-none">
                       👤
                     </div>
                     <input 
                       type="text" 
-                      placeholder="Participez à la table ronde avec vos propres thèses... (exprimez-vous)"
+                      placeholder="Participez au débat avec vos arguments (Entrée pour envoyer)..."
                       value={userContribution}
                       onChange={e => setUserContribution(e.target.value)}
-                      className="flex-1 bg-black border border-white/10 rounded px-3 py-1.5 text-xs text-white focus:outline-none focus:border-blue-500 placeholder-gray-600"
+                      className="flex-1 bg-black border border-white/10 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-blue-500 placeholder-gray-500"
                     />
                     <button 
                       type="submit"
                       disabled={!userContribution.trim() || isSubmittingUserContribution}
-                      className="bg-blue-600 hover:bg-blue-500 border-none font-bold font-condensed text-xs text-white px-3.5 py-1.5 rounded cursor-pointer disabled:opacity-50 flex items-center gap-1 shrink-0 transition-colors"
+                      className="bg-blue-600 hover:bg-blue-500 border-none font-bold text-xs text-white px-3 py-1 rounded-lg cursor-pointer disabled:opacity-40 flex items-center gap-1 shrink-0 transition-colors"
                     >
                       <Send className="w-3 h-3" />
-                      {isSubmittingUserContribution ? "Envoi..." : "Intervenir"}
+                      <span>{isSubmittingUserContribution ? "..." : "Intervenir"}</span>
                     </button>
                   </form>
-                  <p className="text-[10px] text-gray-500 pl-10">
-                    💡 Votre intervention sera insérée dans le flux du débat. Les prochaines interventions des modèles se calqueront en réagissant à votre argumentation.
-                  </p>
                 </div>
               )}
 
-              {/* Actions Controls Panel */}
-              <div className="border border-white/[0.06] p-3 bg-[#050505]/95 backdrop-blur-md rounded-xl flex items-center justify-between gap-4 flex-wrap shrink-0">
+              {/* Actions Controls Panel - Compact & 100% visible sans défiler */}
+              <div className="border border-white/[0.08] p-1 px-1.5 bg-[#0a0a0d]/95 backdrop-blur-md rounded-lg flex items-center justify-between gap-1.5 flex-wrap shrink-0 shadow-lg">
                 
-                <div className="flex gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                   {phase === "idle" && (
                     <button 
                       onClick={handleStart} 
-                      className="flex items-center gap-1.5 bg-[#00f5c4] hover:bg-[#00e0b0] text-[#050505] border-none font-bold font-condensed tracking-wider text-[11px] px-4 py-2 rounded shadow-lg shadow-[#00f5c4]/10 transition-all cursor-pointer uppercase"
+                      className="flex items-center gap-2 bg-[#00f5c4] hover:bg-[#00e0b0] text-black border-none font-bold text-xs sm:text-sm px-4 py-1.5 rounded-lg shadow-lg shadow-[#00f5c4]/30 transition-all cursor-pointer uppercase tracking-wider ring-2 ring-[#00f5c4]/50"
                     >
-                      <Play className="w-3 h-3 fill-current" />
-                      Faire parler les modèles
+                      <Play className="w-3.5 h-3.5 fill-current text-black" />
+                      <span>Lancer le débat</span>
                     </button>
                   )}
 
                   {phase === "running" && (
                     <button 
                       onClick={handlePause} 
-                      className="flex items-center gap-1.5 bg-white/10 hover:bg-white/15 text-white border border-white/5 font-bold font-condensed tracking-wider text-[11px] px-4 py-2 rounded transition-all cursor-pointer uppercase"
+                      className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white border border-white/10 font-bold text-xs sm:text-sm px-3.5 py-1.5 rounded-lg transition-all cursor-pointer uppercase tracking-wider"
                     >
-                      <Pause className="w-3 h-3 fill-current" />
-                      Mettre en pause
+                      <Pause className="w-3.5 h-3.5 fill-current" />
+                      <span>Mettre en pause</span>
                     </button>
                   )}
 
@@ -1379,29 +2389,52 @@ export default function AIDebate() {
                     <>
                       <button 
                         onClick={handleContinue} 
-                        className="flex items-center gap-1.5 bg-[#00f5c4] hover:bg-[#00e0b0] text-[#050505] border-none font-bold font-condensed tracking-wider text-[11px] px-4 py-2 rounded shadow-lg shadow-[#00f5c4]/10 transition-all cursor-pointer uppercase"
+                        className="flex items-center gap-2 bg-[#00f5c4] hover:bg-[#00e0b0] text-black border-none font-bold text-xs sm:text-sm px-3.5 py-1.5 rounded-lg shadow-lg shadow-[#00f5c4]/30 transition-all cursor-pointer uppercase tracking-wider ring-2 ring-[#00f5c4]/40"
                       >
-                        <RefreshCw className="w-3 h-3 animate-spin duration-1000" />
-                        Poursuivre le tour de table
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin duration-1000 text-black" />
+                        <span>Poursuivre</span>
                       </button>
                       <button 
                         onClick={handleStopAndSummarize} 
-                        className="flex items-center gap-1.5 bg-red-500/10 hover:bg-red-500/20 text-[#ef4444] border border-red-500/20 font-bold font-condensed tracking-wider text-[11px] px-4 py-2 rounded transition-all cursor-pointer uppercase"
+                        className="flex items-center gap-2 bg-red-500/15 hover:bg-red-500/25 text-red-200 border border-red-500/30 font-bold text-xs sm:text-sm px-3.5 py-1.5 rounded-lg transition-all cursor-pointer uppercase tracking-wider"
                       >
-                        <Square className="w-3 h-3 fill-current" />
-                        Arrêter & Délibérer le Verdict
+                        <Square className="w-3.5 h-3.5 fill-current" />
+                        <span>Verdict</span>
                       </button>
                     </>
                   )}
+
+                  {/* Bouton bascule Vitesse Rapide */}
+                  <button
+                    onClick={handleToggleTurboSpeed}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider border cursor-pointer transition-all ${
+                      isTurboSpeed
+                        ? "bg-amber-500/20 text-amber-300 border-amber-400/60 ring-1 ring-amber-400/30"
+                        : "bg-white/[0.05] text-gray-400 border-white/10 hover:text-white"
+                    }`}
+                    title={isTurboSpeed ? "Mode Rapide activé (réponses instantanées et dynamiques)" : "Activer le mode rapide"}
+                  >
+                    <Zap className={`w-3.5 h-3.5 ${isTurboSpeed ? "text-amber-400 fill-amber-400" : "text-gray-400"}`} />
+                    <span>{isTurboSpeed ? "⚡ Rapide : ON" : "Vitesse : Standard"}</span>
+                  </button>
+
+                  {/* Badge départ aléatoire */}
+                  <div 
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-medium text-blue-300/90 bg-blue-500/10 border border-blue-500/20"
+                    title="Le premier orateur est tiré au sort parmi toutes les IA sélectionnées"
+                  >
+                    <Shuffle className="w-3 h-3 text-blue-400" />
+                    <span>1er orateur : Aléatoire</span>
+                  </div>
                 </div>
 
                 {!isClosed && phase !== "running" && activeMode === "temporal" && (
-                  <div className="hidden sm:flex items-center gap-2 text-right text-gray-500 max-w-[280px]">
+                  <div className="hidden sm:flex items-center gap-2 text-right text-gray-400 max-w-[280px]">
                     <div className="min-w-0">
-                      <div className="text-[9px] tracking-wider uppercase font-condensed text-gray-600">Rotation suivante :</div>
-                      <div className="text-xs text-gray-400 truncate font-condensed font-bold">{nextTopic.title}</div>
+                      <div className="text-[9px] uppercase tracking-wider font-semibold text-gray-500">Rotation suivante :</div>
+                      <div className="text-xs text-gray-300 truncate font-bold">{nextTopic.title}</div>
                     </div>
-                    <ChevronRight className="w-3.5 h-3.5 opacity-40 shrink-0" />
+                    <ChevronRight className="w-3.5 h-3.5 opacity-50 shrink-0" />
                   </div>
                 )}
               </div>
@@ -1409,20 +2442,20 @@ export default function AIDebate() {
           </>
         ) : (
           /* ── ONGLETS ARCHIVES ET SUPPORTS DE REVISE ──────────────────────── */
-          <div className="flex-1 flex flex-col overflow-hidden py-2 animate-fadeSlideUp">
+          <div className="flex-1 flex flex-col overflow-hidden py-1 px-1 animate-fadeSlideUp">
             
             {selectedArchive ? (
               /* Vue détaillée de l'archive enregistrée */
               <div className="flex-1 overflow-y-auto pr-1">
                 <button 
                   onClick={() => setSelectedArchive(null)} 
-                  className="flex items-center gap-1.5 bg-transparent border-none text-[#999] hover:text-white cursor-pointer text-xs font-bold font-condensed tracking-wider uppercase mb-5 transition-colors"
+                  className="flex items-center gap-1.5 bg-transparent border-none text-[#999] hover:text-white cursor-pointer text-xs font-bold font-condensed tracking-wider uppercase mb-2 transition-colors"
                 >
                   <ArrowLeft className="w-4 h-4" />
                   Retour à la liste des archives
                 </button>
 
-                <div className="p-5 bg-[#090909]/80 border border-white/[0.04] rounded-xl mb-6 flex flex-col md:flex-row justify-between gap-4">
+                <div className="p-3 bg-[#090909]/80 border border-white/[0.04] rounded-lg mb-3 flex flex-col md:flex-row justify-between gap-2">
                   <div className="flex-1 min-w-0">
                     <span className="text-[11px] font-bold font-condensed tracking-widest text-[#00f5c4] uppercase">{selectedArchive.topic.category}</span>
                     <h2 className="text-lg md:text-2xl font-black font-condensed text-white mb-2 leading-snug mt-0.5">
@@ -1433,7 +2466,14 @@ export default function AIDebate() {
                       Session enregistrée le {fmtDate(selectedArchive.closedAt)} · {selectedArchive.messages.length} interventions actives
                     </div>
                   </div>
-                  <div>
+                  <div className="flex items-center gap-2">
+                    <button 
+                      onClick={() => setIsDriveModalOpen(true)}
+                      className="flex items-center gap-1.5 text-xs text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded px-3 py-1.5 font-bold font-condensed cursor-pointer uppercase transition-colors"
+                    >
+                      <Cloud className="w-3.5 h-3.5 text-blue-400" />
+                      <span>Google Drive</span>
+                    </button>
                     <button 
                       onClick={(e) => { handleDeleteArchive(selectedArchive.key, e); }}
                       className="flex items-center gap-1.5 text-xs text-red-500/80 hover:text-red-400 bg-red-500/5 hover:bg-red-500/10 border border-red-500/15 rounded px-3 py-1.5 font-bold font-condensed cursor-pointer uppercase transition-colors"
@@ -1459,7 +2499,12 @@ export default function AIDebate() {
                     RETRANSCRIPTION INTÉGRALE DES DISCOURS
                   </div>
                   {selectedArchive.messages.map(msg => (
-                    <MessageBubble key={msg.id} msg={msg} />
+                    <MessageBubble 
+                      key={msg.id} 
+                      msg={msg} 
+                      topicTitle={selectedArchive.topic.title}
+                      getHeaders={getHeaders}
+                    />
                   ))}
                 </div>
               </div>
@@ -1484,12 +2529,12 @@ export default function AIDebate() {
                     </p>
                   </div>
                 ) : (
-                  <div className="flex flex-col gap-4">
+                  <div className="flex flex-col gap-2">
                     {archives.map((arc, i) => (
                       <div 
                         key={arc.key} 
                         onClick={() => setSelectedArchive(arc)} 
-                        className="p-5 bg-white/[0.01] hover:bg-white/[0.03] border border-white/[0.04] hover:border-[#00f5c4]/30 rounded-xl cursor-pointer transition-all duration-200"
+                        className="p-2.5 px-3 bg-white/[0.01] hover:bg-white/[0.03] border border-white/[0.04] hover:border-[#00f5c4]/30 rounded-lg cursor-pointer transition-all duration-200"
                         style={{ animation: `archiveSlide 0.3s ${i * 0.05}s ease both` }}
                       >
                         <div className="flex items-start justify-between gap-6">
@@ -1538,108 +2583,194 @@ export default function AIDebate() {
         )}
       </main>
 
-      {/* ── FOOTER DES DÉBATEURS ACTIFS EN PIED (Seulement sous l'onglet débat) ── */}
+      {/* ── FOOTER DISCRET DES ORATEURS IA (Ultra-compact & épuré) ── */}
       {tab === "debate" && (
-        <div className="border-t border-white/[0.06] bg-[#050505]/95 z-20 flex flex-wrap sm:flex-nowrap">
-          {AGENTS.map((agent, i) => {
+        <footer className="border-t border-white/[0.06] bg-[#070709]/95 px-2 py-1 z-20 flex items-center justify-center gap-1.5 sm:gap-2.5 flex-wrap">
+          {AGENTS.map((agent) => {
             const isActive = activeAgentsFlags[agent.id];
+            const isLoading = loadingAgent === agent.id;
             return (
               <div 
                 key={agent.id} 
-                className={`flex-1 min-w-[130px] border-b sm:border-b-0 sm:border-r border-white/[0.05] p-3 flex items-center gap-3 transition-colors duration-300 ${
-                  loadingAgent === agent.id ? agent.dim : "transparent"
-                } ${!isActive ? 'opacity-30' : ''}`}
+                title={`${agent.name} (${isActive ? 'Actif' : 'En retrait'})`}
+                className={`flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all ${
+                  isLoading 
+                    ? "border-current bg-white/[0.08]" 
+                    : isActive 
+                    ? "border-white/[0.08] bg-white/[0.02]" 
+                    : "border-transparent opacity-30"
+                }`}
+                style={{ color: agent.color }}
               >
-                <div 
-                  style={{ 
-                    color: loadingAgent === agent.id ? agent.color : (isActive ? agent.color : "rgb(60,60,60)"),
-                    borderColor: loadingAgent === agent.id ? agent.color : "transparent",
-                    background: loadingAgent === agent.id ? agent.dim : "transparent"
-                  }}
-                  className="w-8 h-8 rounded-full border flex items-center justify-center text-xs font-semibold transition-all duration-300 select-none"
-                >
-                  {agent.symbol}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div 
-                    className="font-condensed font-bold text-xs tracking-wider transition-colors duration-300 uppercase truncate"
-                    style={{ color: loadingAgent === agent.id ? agent.color : (isActive ? "#9ca3af" : "#444") }}
-                  >
-                    {agent.name}
-                  </div>
-                  <div className="text-[9px] text-gray-500 truncate leading-none mt-0.5">{agent.role}</div>
-                </div>
-                {loadingAgent === agent.id && (
-                  <div className="ml-auto flex items-center justify-center">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#00f5c4] animate-ping" style={{ backgroundColor: agent.color }} />
-                  </div>
+                <span className="text-[10px] font-bold leading-none">{agent.symbol}</span>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">
+                  {agent.name}
+                </span>
+                {isLoading && (
+                  <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ backgroundColor: agent.color }} />
                 )}
               </div>
             );
           })}
-        </div>
+        </footer>
       )}
+
+      {/* ── MODALS RÉVOLUTIONNAIRES ────────────────────────────────────── */}
+      <DuelArenaModal
+        isOpen={isDuelOpen}
+        onClose={() => setIsDuelOpen(false)}
+        topicTitle={activeTopic.title}
+        topicDescription={activeTopic.description}
+        getHeaders={getHeaders}
+      />
+
+      <BreakingNewsModal
+        isOpen={isBreakingNewsOpen}
+        onClose={() => setIsBreakingNewsOpen(false)}
+        topicTitle={activeTopic.title}
+        getHeaders={getHeaders}
+        onInjectTwist={handleInjectTwist}
+      />
+
+      <UniversalTreatyModal
+        isOpen={isTreatyOpen}
+        onClose={() => setIsTreatyOpen(false)}
+        topicTitle={activeTopic.title}
+        messages={messages}
+        getHeaders={getHeaders}
+      />
+
+      <GoogleDriveModal
+        isOpen={isDriveModalOpen}
+        onClose={() => setIsDriveModalOpen(false)}
+        currentDebateData={{
+          topicTitle: activeTopic.title,
+          topicDescription: activeTopic.description,
+          messages: messages.map(m => ({
+            agentName: m.agentName,
+            agentId: m.agentId,
+            content: m.content,
+            timestamp: Date.now(),
+          })),
+          verdict: verdict,
+          summary: summary,
+        }}
+        onImportDebateTopic={(title, desc) => {
+          setCustomTitle(title);
+          setCustomDesc(desc);
+          setActiveTopic({
+            id: `imported-${Date.now()}`,
+            category: "IMPORT GOOGLE DRIVE",
+            title,
+            description: desc,
+            isCustom: true,
+          });
+          setActiveMode("custom");
+          setMessages([]);
+          setPhase("idle");
+          setVerdict(null);
+          setSummary("");
+        }}
+      />
     </div>
   );
 }
 
 // ─── COMPONENT: MESSAGE BUBBLE ───────────────────────────────────────────────
-function MessageBubble({ msg, onClap }: { msg: Message; onClap?: () => void; key?: string | number }) {
+function MessageBubble({ 
+  msg, 
+  onClap,
+  topicTitle = "",
+  getHeaders,
+  fontSizeLevel = "normal",
+}: { 
+  msg: Message; 
+  onClap?: () => void; 
+  topicTitle?: string;
+  getHeaders?: () => Record<string, string>;
+  key?: string | number;
+  fontSizeLevel?: "normal" | "large" | "xlarge";
+}) {
   const [expanded, setExpanded] = useState(true);
   const isLong = msg.content.length > 550;
   const textToShow = !expanded ? msg.content.slice(0, 400) + "…" : msg.content;
 
+  const contentFontClass = fontSizeLevel === "xlarge" 
+    ? "text-base sm:text-lg md:text-xl leading-relaxed text-gray-100" 
+    : fontSizeLevel === "large" 
+    ? "text-sm sm:text-base md:text-lg leading-relaxed text-gray-100" 
+    : "text-xs sm:text-[13px] md:text-sm leading-relaxed text-gray-200";
+
+  const nameFontClass = fontSizeLevel === "xlarge"
+    ? "text-base sm:text-lg"
+    : fontSizeLevel === "large"
+    ? "text-sm sm:text-base"
+    : "text-xs sm:text-sm";
+
   return (
-    <div className={`flex gap-3 md:gap-4 animate-fadeSlideUp max-w-4xl ${msg.isUser ? 'ml-auto' : ''}`}>
+    <div className={`flex gap-1.5 md:gap-2 animate-fadeSlideUp w-full ${msg.isUser ? 'ml-auto' : ''}`}>
       <div 
         style={{ 
           borderColor: msg.agentBorder, 
           color: msg.agentColor, 
           background: msg.agentDim,
-          boxShadow: `0 0 12px ${msg.agentColor}12`
+          boxShadow: `0 0 12px ${msg.agentColor}20`
         }}
-        className="w-9 h-9 md:w-10 md:h-10 rounded-full border flex items-center justify-center text-sm font-semibold shrink-0 select-none"
+        className="w-8 h-8 md:w-9 md:h-9 rounded-full border flex items-center justify-center text-xs font-bold shrink-0 select-none"
       >
         {msg.agentSymbol}
       </div>
       <div className="flex-1 min-w-0">
-        <div className="flex items-baseline gap-2 mb-1">
-          <span className="font-condensed font-bold text-sm tracking-wider uppercase" style={{ color: msg.agentColor }}>
+        <div className="flex items-baseline gap-2 mb-0.5">
+          <span className={`font-bold tracking-normal ${nameFontClass}`} style={{ color: msg.agentColor }}>
             {msg.agentName}
           </span>
-          <span className="text-[9px] text-gray-500 font-condensed tracking-wide uppercase">
+          <span className="text-[10px] text-gray-400 font-medium tracking-normal truncate">
             {msg.agentRole}
           </span>
-          <span className="text-[10px] text-gray-500 ml-auto">
+          <span className="text-[10px] text-gray-500 ml-auto shrink-0">
             {msg.time}
           </span>
         </div>
         
         <div 
-          className="bg-[#030303] border border-white/[0.04] rounded-r-lg rounded-bl-sm px-4 py-3 text-xs md:text-sm leading-relaxed relative flex flex-col justify-between" 
+          className="bg-[#0b0b0e] border border-white/[0.08] rounded-lg px-2.5 py-1.5 relative flex flex-col justify-between shadow-sm" 
           style={{ borderLeft: `3px solid ${msg.agentColor}` }}
         >
-          <p className="text-gray-200 font-sans leading-relaxed whitespace-pre-wrap select-text">{textToShow}</p>
+          <p className={`font-sans whitespace-pre-wrap select-text ${contentFontClass}`}>{textToShow}</p>
           
-          <div className="flex items-center justify-between gap-4 mt-2 border-t border-white/[0.03] pt-2">
+          <div className="flex flex-wrap items-center justify-between gap-2 mt-2 border-t border-white/[0.06] pt-2">
             {isLong ? (
               <button 
                 onClick={() => setExpanded(!expanded)} 
                 style={{ color: msg.agentColor }}
-                className="bg-transparent border-none text-[10px] font-bold font-condensed tracking-wider uppercase cursor-pointer hover:opacity-80 flex items-center gap-1 transition-opacity pr-2"
+                className="bg-transparent border-none text-[11px] font-bold tracking-wider uppercase cursor-pointer hover:opacity-80 flex items-center gap-1 transition-opacity pr-2"
               >
-                {expanded ? "▲ Masquer la thèse" : "▼ Déployer la thèse complète"}
+                {expanded ? "▲ Masquer" : "▼ Déployer"}
               </button>
             ) : <span />}
 
             <button 
               onClick={onClap}
-              className="bg-white/5 hover:bg-white/10 text-gray-400 hover:text-yellow-400 border border-white/5 rounded-full px-2 py-0.5 text-[9px] md:text-[10px] font-condensed uppercase font-bold tracking-wider cursor-pointer flex items-center gap-1.5 transition-all select-none"
+              className="bg-white/[0.06] hover:bg-white/[0.12] text-gray-300 hover:text-yellow-300 border border-white/[0.08] rounded-lg px-2.5 py-1 text-xs font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1.5 transition-all select-none ml-auto"
             >
-              <ThumbsUp className="w-3 h-3 fill-current" />
+              <ThumbsUp className="w-3 h-3 fill-current text-yellow-400" />
               <span>Soutenir {msg.claps ? `(${msg.claps})` : ""}</span>
             </button>
           </div>
+
+          {/* Fallacy & Logic Inspector if getHeaders is provided */}
+          {getHeaders && !msg.agentId.startsWith("system") && (
+            <div className="mt-1.5 pt-1.5 border-t border-white/[0.03]">
+              <FallacyInspector
+                content={msg.content}
+                agentName={msg.agentName}
+                agentColor={msg.agentColor}
+                topicTitle={topicTitle}
+                getHeaders={getHeaders}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>

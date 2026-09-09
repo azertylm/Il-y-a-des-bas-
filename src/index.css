@@ -1,10 +1,39 @@
-@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;600;700;900&family=DM+Sans:wght@300;400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "DM Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-condensed: "Barlow Condensed", sans-serif;
+  --font-sans: "DM Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-condensed: "Plus Jakarta Sans", "DM Sans", sans-serif;
 }
+
+/* Global scale up by 25% and elimination of margins */
+html {
+  font-size: 125%; /* +25% across all rem units (16px -> 20px base) */
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  overflow-x: hidden;
+}
+
+*, *::before, *::after {
+  box-sizing: inherit;
+}
+
+/* Scale up arbitrary fixed pixel text classes by 25% */
+.text-\[8px\] { font-size: 10px !important; }
+.text-\[9px\] { font-size: 11.25px !important; }
+.text-\[10px\] { font-size: 12.5px !important; }
+.text-\[11px\] { font-size: 13.75px !important; }
+.text-\[12px\] { font-size: 15px !important; }
+.text-\[13px\] { font-size: 16.25px !important; }
+.text-\[14px\] { font-size: 17.5px !important; }
 
 /* Custom global and animation styling */
 @keyframes pulseRed {
