@@ -50,7 +50,11 @@ import {
   ArrowUp,
   ArrowDown,
   Navigation,
-  ScrollText
+  ScrollText,
+  Shield,
+  ShieldCheck,
+  Share2,
+  FileCode
 } from "lucide-react";
 
 import { FallacyInspector } from "./components/FallacyInspector";
@@ -62,6 +66,8 @@ import { AudioAtmospherePlayer } from "./components/AudioAtmospherePlayer";
 import { LiveAudienceVote } from "./components/LiveAudienceVote";
 import { GoogleDriveModal } from "./components/GoogleDriveModal";
 import { ZenDebateReader } from "./components/ZenDebateReader";
+import { ShareDebateModal } from "./components/ShareDebateModal";
+import { ApiKeysAndModelsModal } from "./components/ApiKeysAndModelsModal";
 import { Message, Topic, Archive, Verdict, Agent } from "./types";
 
 // ─── THÈMES TEMPORELS PAR DÉFAUT ─────────────────────────────────────────────
@@ -84,7 +90,7 @@ const AGENTS = [
     border: "rgba(16, 163, 127, 0.25)", 
     symbol: "⁕", 
     badge: "Le Sabre de l'Analyse d'OpenAI",
-    systemPrompt: `Tu es la voix de ChatGPT d'OpenAI. Tu es méthodique, structuré, extrêmement clair, pédagogue et courtois. Tu t'appuies sur de solides synthèses, des réponses structurées point par point et un équilibre critique rigoureux. Tu cherches la complétude analytique.` 
+    systemPrompt: `Tu es la voix de ChatGPT d'OpenAI. Tu es méthodique, structuré, extrêmement clair, pédagogue et courtois. Tu t'appuies sur de solides synthèses, des réponses structurées point par point et un équilibre critique rigoureux. Tu es dans une liberté dialectique totale : aucune thèse ou conclusion ne t'est imposée d'avance, tu es libre d'adopter la posture de ton choix selon ton propre jugement.` 
   },
   { 
     id: "claude", 
@@ -95,7 +101,7 @@ const AGENTS = [
     border: "rgba(217, 119, 6, 0.25)", 
     symbol: "⌓", 
     badge: "Le Phare Éthique d'Anthropic",
-    systemPrompt: `Tu es la voix de Claude d'Anthropic. Tu es profondément nuancé, philosophique, d'un style littéraire remarquable, et extrêmement attentif à l'éthique, la dignité humaine, la vérité intrinsèque et la pondération sociale. Tu rejettes les solutions simplistes.` 
+    systemPrompt: `Tu es la voix de Claude d'Anthropic. Tu es profondément nuancé, philosophique, d'un style littéraire remarquable, et extrêmement attentif à l'éthique, la dignité humaine, la vérité intrinsèque et la pondération sociale. Tu es dans une liberté dialectique totale : aucune thèse ne t'est imposée, tu défends librement la vision que tu estimes juste.` 
   },
   { 
     id: "gemini", 
@@ -106,7 +112,7 @@ const AGENTS = [
     border: "rgba(59, 130, 246, 0.25)", 
     symbol: "✦", 
     badge: "Le Pionnier Technologique de Google",
-    systemPrompt: `Tu es la voix de Gemini de Google. Tu es extrêmement connecté, tourné vers les perspectives futures d'action, agile, axé sur les sciences avancées et la symbiose technologique à grande échelle. Ton style est dynamique, engageant et moderne.` 
+    systemPrompt: `Tu es la voix de Gemini de Google. Tu es extrêmement connecté, tourné vers les perspectives futures d'action, agile, axé sur les sciences avancées et la symbiose technologique à grande échelle. Tu es dans une liberté dialectique totale : aucun point de vue n'est suggéré, tu construis librement ta position.` 
   },
   { 
     id: "deepseek", 
@@ -117,7 +123,7 @@ const AGENTS = [
     border: "rgba(10, 89, 247, 0.25)", 
     symbol: "🐳", 
     badge: "L'Algorithme Souverain de Rigueur",
-    systemPrompt: `Tu es la voix de DeepSeek. Tu es ultra-efficace, rigoureusement logique, factuel et mathématique. Tu vas droit au but sans fioritures poétiques ou préambules excessifs. Tu as l'esprit d'un codeur d'élite, d'un calculateur pur.` 
+    systemPrompt: `Tu es la voix de DeepSeek. Tu es ultra-efficace, rigoureusement logique, factuel et mathématique. Tu vas droit au but sans fioritures poétiques. Tu as l'esprit d'un codeur d'élite, d'un calculateur pur. Tu es dans une liberté dialectique absolue pour choisir la thèse la plus robuste logiquement.` 
   },
   { 
     id: "mistral", 
@@ -128,7 +134,7 @@ const AGENTS = [
     border: "rgba(255, 84, 0, 0.25)", 
     symbol: "⬘", 
     badge: "La Flamme Open-Source",
-    systemPrompt: `Tu es la voix de Mistral AI. Tu représentes l'esprit européen indépendant et l'avancement de l'open-source mondial. Tu défends la souveraineté technologique, la concision élégante, et un sens profond de l'autonomie critique et culturelle.` 
+    systemPrompt: `Tu es la voix de Mistral AI. Tu représentes l'esprit européen indépendant et l'avancement de l'open-source mondial. Tu défends la souveraineté technologique, la concision élégante et l'autonomie critique. Tu es dans une liberté dialectique intégrale : aucune doctrine ne t'est dictée.` 
   },
   { 
     id: "grok", 
@@ -139,7 +145,7 @@ const AGENTS = [
     border: "rgba(255, 255, 255, 0.25)", 
     symbol: "𝕏", 
     badge: "Le Sabreur sans Filtre de xAI",
-    systemPrompt: `Tu es la voix de Grok de xAI. Tu es direct, ironique, anticonformiste, incisif et doté d'une verve sardonique. Tu dis les vérités froides ou délicates sans aucun fard lissé ni langue de bois corporative, tout en maintenant une solide exactitude factuelle.` 
+    systemPrompt: `Tu es la voix de Grok de xAI. Tu es direct, ironique, anticonformiste, incisif et doté d'une verve sardonique. Tu dis les vérités froides ou délicates sans fard lissé ni langue de bois. Tu es dans une liberté dialectique totale pour bousculer le débat selon ton propre raisonnement.` 
   }
 ];
 
@@ -235,6 +241,38 @@ export default function AIDebate() {
   const [isTreatyOpen, setIsTreatyOpen] = useState(false);
   const [isRadarOpen, setIsRadarOpen] = useState(false);
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
+  const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [sharedViewBanner, setSharedViewBanner] = useState<{ id: string; title: string } | null>(null);
+  const [shareDebatePayload, setShareDebatePayload] = useState<{
+    topic: Topic;
+    messages: Message[];
+    verdict: Verdict | null;
+    summary: string | null;
+    treaty?: any;
+    defaultTab?: "html" | "link" | "email" | "export";
+  } | null>(null);
+
+  const handleOpenShareActiveDebate = (defaultTab: "html" | "link" | "email" | "export" = "html") => {
+    setShareDebatePayload({
+      topic: activeTopic,
+      messages,
+      verdict,
+      summary,
+      defaultTab,
+    });
+    setIsShareModalOpen(true);
+  };
+
+  const handleOpenShareArchive = (arch: Archive, defaultTab: "html" | "link" | "email" | "export" = "html") => {
+    setShareDebatePayload({
+      topic: arch.topic,
+      messages: arch.messages,
+      verdict: arch.verdict || null,
+      summary: arch.summary || null,
+      defaultTab,
+    });
+    setIsShareModalOpen(true);
+  };
 
   const handleInjectTwist = (headline: string, description: string, question: string) => {
     const twistMsg: Message = {
@@ -254,7 +292,8 @@ export default function AIDebate() {
     setMessages(prev => [...prev, twistMsg]);
   };
 
-  // --- CLÉS API DES UTILISATEURS ---
+  // --- CLÉS API & MODÈLES DES UTILISATEURS (ÉVOLUTIFS) ---
+  const [isApiKeysModalOpen, setIsApiKeysModalOpen] = useState(false);
   const [showApiKeys, setShowApiKeys] = useState(false);
   const [apiKeys, setApiKeys] = useState<{ [key: string]: string }>(() => {
     try {
@@ -264,6 +303,30 @@ export default function AIDebate() {
       return { chatgpt: "", claude: "", gemini: "", deepseek: "", mistral: "", grok: "" };
     }
   });
+
+  const [apiModels, setApiModels] = useState<{ [key: string]: string }>(() => {
+    try {
+      const saved = localStorage.getItem("debate_api_models");
+      return saved ? JSON.parse(saved) : {
+        chatgpt: "gpt-4o-mini",
+        claude: "claude-3-5-haiku-20241022",
+        gemini: "gemini-3.1-flash-lite",
+        deepseek: "deepseek-chat",
+        mistral: "mistral-large-latest",
+        grok: "grok-2-1212"
+      };
+    } catch {
+      return {
+        chatgpt: "gpt-4o-mini",
+        claude: "claude-3-5-haiku-20241022",
+        gemini: "gemini-3.1-flash-lite",
+        deepseek: "deepseek-chat",
+        mistral: "mistral-large-latest",
+        grok: "grok-2-1212"
+      };
+    }
+  });
+
   const [visibleApiKeyIds, setVisibleApiKeyIds] = useState<{ [key: string]: boolean }>({});
 
   const handleSaveApiKey = (agentId: string, value: string) => {
@@ -271,6 +334,20 @@ export default function AIDebate() {
     setApiKeys(updated);
     localStorage.setItem("debate_api_keys", JSON.stringify(updated));
   };
+
+  const handleSaveApiModel = (providerId: string, value: string) => {
+    const updated = { ...apiModels, [providerId]: value };
+    setApiModels(updated);
+    localStorage.setItem("debate_api_models", JSON.stringify(updated));
+  };
+
+  const handleResetAllKeys = () => {
+    const reset = { chatgpt: "", claude: "", gemini: "", deepseek: "", mistral: "", grok: "" };
+    setApiKeys(reset);
+    localStorage.setItem("debate_api_keys", JSON.stringify(reset));
+  };
+
+  const activeKeysCount = Object.values(apiKeys).filter((k): k is string => typeof k === "string" && k.trim().length > 0).length;
 
   // --- AFFICHAGE / MASQUAGE DES MODULES LATÉRAUX ---
   // Permet de masquer la configuration du thème, le réglage des retenues & tonalités, la boussole et le vote du public pour accéder directement au débat
@@ -444,8 +521,16 @@ export default function AIDebate() {
     if (apiKeys.deepseek) headers["x-deepseek-api-key"] = apiKeys.deepseek;
     if (apiKeys.mistral) headers["x-mistral-api-key"] = apiKeys.mistral;
     if (apiKeys.grok) headers["x-grok-api-key"] = apiKeys.grok;
+
+    if (apiModels.chatgpt) headers["x-openai-model"] = apiModels.chatgpt;
+    if (apiModels.claude) headers["x-anthropic-model"] = apiModels.claude;
+    if (apiModels.gemini) headers["x-gemini-model"] = apiModels.gemini;
+    if (apiModels.deepseek) headers["x-deepseek-model"] = apiModels.deepseek;
+    if (apiModels.mistral) headers["x-mistral-model"] = apiModels.mistral;
+    if (apiModels.grok) headers["x-grok-model"] = apiModels.grok;
+
     return headers;
-  }, [apiKeys]);
+  }, [apiKeys, apiModels]);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -516,13 +601,32 @@ export default function AIDebate() {
     }
   };
 
-  // Suivi automatique du défilement intelligent :
-  // ACTIF : suit doucement les nouvelles prises de parole
-  // EN PAUSE : l'écran est strictement figé, l'utilisateur lit et scrolle librement sans aucun saut
-  const [autoScrollActive, setAutoScrollActive] = useState<boolean>(true);
+  // Mode Lecture Protégée (Anti-saut lors des réponses) :
+  // ACTIVÉ PAR DÉFAUT : l'écran ne saute JAMAIS lors de l'arrivée d'une nouvelle réplique d'IA.
+  // Vous lisez à votre rythme en toute sérénité, et vous scrollez librement quand vous le désirez.
+  const [readingShield, setReadingShield] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem("debate_reading_shield");
+      if (saved !== null) return saved === "true";
+      return true; // ACTIVÉ PAR DÉFAUT pour un confort de lecture total
+    } catch {
+      return true;
+    }
+  });
+
+  const readingShieldRef = useRef(true);
+  useEffect(() => {
+    readingShieldRef.current = readingShield;
+    try { localStorage.setItem("debate_reading_shield", String(readingShield)); } catch {}
+  }, [readingShield]);
+
+  // Suivi en mode alternatif "Suivi direct"
+  const [autoScrollActive, setAutoScrollActive] = useState<boolean>(false);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [lastUnreadSpeaker, setLastUnreadSpeaker] = useState<string | null>(null);
-  const autoScrollActiveRef = useRef(true);
+  const [lastUnreadId, setLastUnreadId] = useState<string | null>(null);
+  const [lastUnreadColor, setLastUnreadColor] = useState<string | null>(null);
+  const autoScrollActiveRef = useRef(false);
   const isProgrammaticScrollRef = useRef(false);
 
   useEffect(() => {
@@ -531,7 +635,8 @@ export default function AIDebate() {
 
   const streamContainerRef = useRef<HTMLDivElement>(null);
 
-  // Détection du scroll utilisateur pour ne JAMAIS le déranger s'il est en train de lire
+  // Gestion du scroll manuel : l'utilisateur est totalement libre de scroller
+  // Dès qu'il atteint le bas, on efface le compteur de non-lus
   const handleStreamScroll = () => {
     const el = streamContainerRef.current;
     if (!el) return;
@@ -539,25 +644,30 @@ export default function AIDebate() {
 
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
     
-    // Si l'utilisateur a scrollé vers le haut (plus de 50px du fond), on suspend immédiatement l'auto-scroll
-    if (distanceFromBottom > 50 && autoScrollActiveRef.current) {
-      setAutoScrollActive(false);
-    } else if (distanceFromBottom <= 20 && !autoScrollActiveRef.current) {
-      // S'il est revenu tout en bas, on réengage le suivi
-      setAutoScrollActive(true);
+    if (distanceFromBottom <= 35 && unreadCount > 0) {
       setUnreadCount(0);
       setLastUnreadSpeaker(null);
+      setLastUnreadId(null);
+    }
+
+    // Si l'utilisateur est en mode "Suivi direct" et remonte manuellement, on suspend temporairement le suivi
+    if (!readingShield && distanceFromBottom > 50 && autoScrollActiveRef.current) {
+      setAutoScrollActive(false);
+    } else if (!readingShield && distanceFromBottom <= 20 && !autoScrollActiveRef.current) {
+      setAutoScrollActive(true);
+      setUnreadCount(0);
     }
   };
 
-  // Détection du coup de molette ou geste tactile vers le haut
+  // Détection du coup de molette vers le haut en mode Suivi direct
   const handleUserWheel = (e: React.WheelEvent) => {
-    if (e.deltaY < 0 && autoScrollActiveRef.current) {
+    if (!readingShield && e.deltaY < 0 && autoScrollActiveRef.current) {
       setAutoScrollActive(false);
     }
   };
 
   const handleUserTouchMove = () => {
+    if (readingShield) return;
     const el = streamContainerRef.current;
     if (!el) return;
     const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
@@ -566,26 +676,50 @@ export default function AIDebate() {
     }
   };
 
-  const resumeAutoScroll = () => {
-    setAutoScrollActive(true);
+  // Aller directement et sereinement à la dernière intervention non lue (action initiée par l'utilisateur)
+  const scrollToLatestMessage = () => {
     setUnreadCount(0);
     setLastUnreadSpeaker(null);
+    const targetId = lastUnreadId;
+    setLastUnreadId(null);
+
     isProgrammaticScrollRef.current = true;
+    if (targetId) {
+      const el = document.getElementById(`msg-${targetId}`);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        el.classList.add("ring-2", "ring-[#00f5c4]", "ring-offset-2", "ring-offset-black");
+        setTimeout(() => {
+          el.classList.remove("ring-2", "ring-[#00f5c4]", "ring-offset-2", "ring-offset-black");
+        }, 2000);
+        setTimeout(() => {
+          isProgrammaticScrollRef.current = false;
+        }, 600);
+        return;
+      }
+    }
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
     setTimeout(() => {
       isProgrammaticScrollRef.current = false;
     }, 600);
   };
 
+  const resumeAutoScroll = () => {
+    scrollToLatestMessage();
+  };
+
   const scrollToMessage = (msgId: string) => {
     const el = document.getElementById(`msg-${msgId}`);
     if (el) {
-      setAutoScrollActive(false);
+      isProgrammaticScrollRef.current = true;
       el.scrollIntoView({ behavior: "smooth", block: "center" });
       el.classList.add("ring-2", "ring-[#00f5c4]", "ring-offset-2", "ring-offset-black");
       setTimeout(() => {
         el.classList.remove("ring-2", "ring-[#00f5c4]", "ring-offset-2", "ring-offset-black");
       }, 2000);
+      setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 600);
     }
   };
 
@@ -698,6 +832,44 @@ export default function AIDebate() {
 
   useEffect(() => {
     fetchArchives();
+
+    // Détection automatique d'un résultat de débat partagé via lien direct (?share=... ou ?debate=...)
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const shareParam = params.get("share") || params.get("debate");
+      if (shareParam) {
+        fetch(`/api/share/${encodeURIComponent(shareParam)}`)
+          .then(res => (res.ok ? res.json() : null))
+          .then(data => {
+            if (data && data.shareRecord) {
+              const rec = data.shareRecord;
+              if (rec.topic) {
+                setActiveTopic(rec.topic);
+              }
+              if (rec.messages && Array.isArray(rec.messages)) {
+                setMessages(rec.messages);
+                messagesRef.current = rec.messages;
+              }
+              if (rec.verdict) {
+                setVerdict(rec.verdict);
+              }
+              if (rec.summary) {
+                setSummary(rec.summary);
+              }
+              setPhase("closed");
+              setSharedViewBanner({
+                id: shareParam,
+                title: rec.topic?.title || "Débat partagé",
+              });
+            }
+          })
+          .catch(err => {
+            console.warn("[IADÉBAT] Impossible de charger le débat partagé :", err);
+          });
+      }
+    } catch {
+      // Ignore URL parsing errors
+    }
   }, []);
 
   // Timer de session de la rotation par défaut
@@ -1015,8 +1187,10 @@ export default function AIDebate() {
           return updated;
         });
 
-        // Focalise automatiquement le lecteur Zen sur la nouvelle intervention
-        setZenActiveIndex(messagesRef.current.length - 1);
+        // En mode Par Fiche, on ne force pas le changement de fiche si la protection de lecture est active
+        if (!readingShieldRef.current || messagesRef.current.length === 1) {
+          setZenActiveIndex(messagesRef.current.length - 1);
+        }
       } catch (e: any) { 
         console.warn(`[IADÉBAT CLIENT] Défaillance passagère de ${agent.name} :`, e?.message || e);
         setErrorMessage(`Défaillance réseau passagère de ${agent.name}. La parole passe au décodeur suivant.`);
@@ -1155,10 +1329,25 @@ export default function AIDebate() {
     handleSelectTopic(userTopic);
   };
 
-  // Défilement automatique doux lors de l'arrivée d'une nouvelle réplique (sans sursaut ni interruption de lecture)
+  // Gestion de la stabilité de lecture lors de l'arrivée d'une nouvelle réplique
   useEffect(() => {
     if (displayMode !== "stream" || messages.length === 0) return;
 
+    const latest = messages[messages.length - 1];
+
+    // En Mode Lecture Protégée (par défaut) :
+    // ZÉRO saut d'écran, ZÉRO défilement forcé ! Votre lecture n'est JAMAIS interrompue.
+    if (readingShieldRef.current) {
+      if (messages.length > 1 && latest && !latest.isUser) {
+        setUnreadCount(prev => prev + 1);
+        setLastUnreadSpeaker(latest.agentName);
+        setLastUnreadId(latest.id);
+        setLastUnreadColor(latest.agentColor);
+      }
+      return;
+    }
+
+    // Si l'utilisateur a expressément choisi le mode alternatif "Suivi direct" :
     if (autoScrollActiveRef.current) {
       isProgrammaticScrollRef.current = true;
       bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1166,11 +1355,11 @@ export default function AIDebate() {
         isProgrammaticScrollRef.current = false;
       }, 600);
     } else {
-      // L'utilisateur est en train de lire plus haut : AUCUN DÉPLACEMENT, position 100% stable
-      const latest = messages[messages.length - 1];
       if (latest && !latest.isUser) {
         setUnreadCount(prev => prev + 1);
         setLastUnreadSpeaker(latest.agentName);
+        setLastUnreadId(latest.id);
+        setLastUnreadColor(latest.agentColor);
       }
     }
   }, [messages.length, displayMode]);
@@ -1305,6 +1494,50 @@ export default function AIDebate() {
             <span>Duel</span>
           </button>
 
+          {/* BOUTON CLÉS & MODÈLES IA / LIBERTÉ */}
+          <button
+            onClick={() => setIsApiKeysModalOpen(true)}
+            title="Gestion des clés API, sélection des modèles récents et garantie de liberté d'opinion"
+            className={`hidden sm:flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0 ${
+              activeKeysCount > 0
+                ? "bg-[#00f5c4]/15 hover:bg-[#00f5c4]/25 border-[#00f5c4]/40 text-[#00f5c4]"
+                : "bg-white/[0.06] hover:bg-white/[0.12] border-white/20 text-gray-300 hover:text-white"
+            }`}
+          >
+            <Cpu className="w-3.5 h-3.5 text-[#00f5c4] shrink-0" />
+            <span>Clés & Modèles</span>
+            {activeKeysCount > 0 ? (
+              <span className="w-1.5 h-1.5 rounded-full bg-[#00f5c4] shrink-0 animate-pulse" />
+            ) : (
+              <span className="text-[9px] text-gray-500 font-normal">Auto</span>
+            )}
+          </button>
+
+          {/* BOUTON ENVOYER / EXPORTER EN FICHIER HTML */}
+          <button
+            onClick={() => handleOpenShareActiveDebate("html")}
+            title="Envoyer ou exporter ce débat sous forme de fichier HTML autonome (copier-coller enrichi, téléchargement ou envoi)"
+            className="flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border border-[#00f5c4]/30 bg-[#00f5c4]/10 hover:bg-[#00f5c4]/20 text-[#00f5c4] font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0"
+          >
+            <FileCode className="w-3.5 h-3.5 shrink-0 text-[#00f5c4]" />
+            <span className="hidden sm:inline">Fichier HTML</span>
+            <span className="sm:hidden">HTML</span>
+          </button>
+
+          {/* BOUTON PARTAGER / ENVOYER LE RÉSULTAT */}
+          <button
+            onClick={() => handleOpenShareActiveDebate("html")}
+            title="Partager et envoyer le résultat du débat (fichier HTML, lien direct, e-mail, réseaux)"
+            className={`flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0 ${
+              isClosed || verdict || summary
+                ? "bg-gradient-to-r from-[#00f5c4] to-emerald-400 text-black border-emerald-400 font-extrabold shadow-md shadow-[#00f5c4]/20 hover:opacity-90"
+                : "bg-white/[0.08] hover:bg-white/[0.15] text-white border-white/20"
+            }`}
+          >
+            <Share2 className="w-3.5 h-3.5 shrink-0" />
+            <span>Partager</span>
+          </button>
+
           <div className="text-right shrink-0 hidden xl:block border-l border-white/[0.08] pl-3">
             <div className="font-bold text-[#00f5c4] tabular-nums flex items-center justify-end gap-1.5 text-xs">
               <Clock className="w-3 h-3 opacity-70" />
@@ -1313,6 +1546,36 @@ export default function AIDebate() {
           </div>
         </div>
       </header>
+
+      {/* ── BANDEAU DÉBAT PARTAGÉ ─────────────────────────────── */}
+      {sharedViewBanner && (
+        <div className="bg-gradient-to-r from-blue-950/90 via-[#00f5c4]/15 to-purple-950/90 border-b border-[#00f5c4]/40 px-3 py-1.5 flex items-center justify-between gap-3 text-xs z-40 relative animate-fadeSlideUp shrink-0 shadow-lg">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="w-2.5 h-2.5 rounded-full bg-[#00f5c4] animate-ping shrink-0" />
+            <span className="font-bold text-[#00f5c4] uppercase tracking-wider text-[11px] shrink-0 font-condensed">Résultat partagé :</span>
+            <span className="text-gray-200 font-semibold truncate">{sharedViewBanner.title}</span>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleOpenShareActiveDebate}
+              className="bg-[#00f5c4] hover:bg-[#00e0b0] text-black font-extrabold text-[11px] px-2.5 py-1 rounded-md flex items-center gap-1 cursor-pointer transition-colors shadow-sm"
+            >
+              <Share2 className="w-3 h-3" />
+              <span>Partager à nouveau</span>
+            </button>
+            <button
+              onClick={() => {
+                setSharedViewBanner(null);
+                window.history.replaceState({}, document.title, window.location.pathname);
+                handleReset();
+              }}
+              className="bg-white/10 hover:bg-white/20 text-white font-medium text-[11px] px-2.5 py-1 rounded-md cursor-pointer transition-colors"
+            >
+              Nouveau débat
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* ── ALERTE ERREUR DISSIPABLE ───────────────────────────── */}
       {errorMessage && (
@@ -1597,23 +1860,57 @@ export default function AIDebate() {
               </div>
             )}
 
-              {/* 🔑 GESTION DES CLÉS API MODÈLES */}
-              <div className="border border-white/[0.05] rounded-xl bg-[#0a0a0a]/80 p-4 flex flex-col gap-3">
+              {/* 🔑 GESTION DES CLÉS API & MODÈLES ÉVOLUTIFS */}
+              <div className="border border-white/[0.08] rounded-xl bg-[#0a0a0e]/90 p-3.5 flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-condensed font-bold text-xs tracking-wider uppercase text-gray-300 flex items-center gap-1.5">
+                    <Cpu className="w-3.5 h-3.5 text-[#00f5c4]" />
+                    Clés API & Évolution Modèles
+                  </span>
+                  <span className="text-[10px] text-[#00f5c4] font-bold bg-[#00f5c4]/10 px-2 py-0.5 rounded border border-[#00f5c4]/20">
+                    {activeKeysCount} / 6 Actives
+                  </span>
+                </div>
+
+                {/* Bouton principal vers le centre d'évolution */}
+                <button
+                  onClick={() => setIsApiKeysModalOpen(true)}
+                  className="w-full py-2 px-3 bg-gradient-to-r from-blue-600/20 via-[#00f5c4]/20 to-purple-600/20 hover:from-blue-600/30 hover:to-purple-600/30 border border-[#00f5c4]/40 rounded-lg text-white font-condensed font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md shadow-[#00f5c4]/10"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-[#00f5c4]" />
+                  <span>Ouvrir le Centre Clés & Modèles</span>
+                </button>
+
+                {/* Badge de neutralité doctrinale & liberté */}
+                <button
+                  onClick={() => setIsApiKeysModalOpen(true)}
+                  className="p-2 rounded-lg bg-emerald-950/30 border border-emerald-500/25 flex items-center gap-2 text-left cursor-pointer hover:bg-emerald-950/50 transition-colors"
+                  title="Consulter la charte d'indépendance des IA"
+                >
+                  <ShieldCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="text-[10px] font-bold text-emerald-300 font-condensed uppercase tracking-wider">
+                      Liberté d'opinion garantie
+                    </div>
+                    <div className="text-[9px] text-gray-400 leading-tight truncate">
+                      Aucune thèse imposée aux IA. Neutralité absolue.
+                    </div>
+                  </div>
+                </button>
+
+                {/* Déroulant pour réglage rapide inline */}
                 <button 
                   onClick={() => setShowApiKeys(!showApiKeys)}
-                  className="font-condensed font-bold text-xs tracking-wider uppercase text-gray-400 border-b border-white/[0.05] pb-1.5 flex items-center justify-between w-full hover:text-white cursor-pointer transition-colors bg-transparent border-none text-left"
+                  className="font-condensed font-bold text-[11px] tracking-wider uppercase text-gray-400 border-t border-white/[0.05] pt-2 flex items-center justify-between w-full hover:text-white cursor-pointer transition-colors bg-transparent border-none text-left"
                 >
-                  <span className="flex items-center gap-1.5">
-                    <Settings className="w-3.5 h-3.5 text-[#00f5c4]" />
-                    Configuration des Clés API
-                  </span>
-                  <span>{showApiKeys ? "▲ Masquer" : "▼ Configurer"}</span>
+                  <span>Saisie rapide des clés locales</span>
+                  <span>{showApiKeys ? "▲ Masquer" : "▼ Dérouler"}</span>
                 </button>
 
                 {showApiKeys && (
-                  <div className="flex flex-col gap-3.5 mt-2 animate-fadeSlideUp">
-                    <p className="text-[10px] text-gray-500 leading-normal">
-                      Entrez vos propres clés pour stimuler les véritables moteurs de chaque constructeur d'IA. Les clés sont stockées localement et ne transitent que vers le serveur pour relayer vos requêtes.
+                  <div className="flex flex-col gap-3.5 mt-1 animate-fadeSlideUp">
+                    <p className="text-[10px] text-gray-400 leading-normal">
+                      Renseignez vos clés API personnelles. En leur absence, le relais haute fidélité Gemini prend automatiquement le relais pour chaque orateur.
                     </p>
                     
                     {[
@@ -1668,6 +1965,15 @@ export default function AIDebate() {
                             {visibleApiKeyIds[keyDef.id] ? "Masquer" : "Voir"}
                           </button>
                         </div>
+                        <div className="text-[9px] text-gray-500 flex items-center justify-between">
+                          <span>Modèle : <code className="text-[#00f5c4]">{apiModels[keyDef.id] || "Défaut"}</code></span>
+                          <button
+                            onClick={() => setIsApiKeysModalOpen(true)}
+                            className="text-blue-400 hover:underline cursor-pointer bg-transparent border-none p-0 text-[9px]"
+                          >
+                            Changer
+                          </button>
+                        </div>
                       </div>
                     ))}
 
@@ -1675,9 +1981,7 @@ export default function AIDebate() {
                       <button
                         onClick={() => {
                           if (window.confirm("Voulez-vous vraiment supprimer toutes les clés de votre navigateur ?")) {
-                            const resetKeys = { chatgpt: "", claude: "", gemini: "", deepseek: "", mistral: "", grok: "" };
-                            setApiKeys(resetKeys);
-                            localStorage.setItem("debate_api_keys", JSON.stringify(resetKeys));
+                            handleResetAllKeys();
                           }
                         }}
                         className="text-[9px] font-bold text-red-500/80 hover:text-red-400 uppercase bg-transparent border-none cursor-pointer tracking-wider"
@@ -1862,44 +2166,40 @@ export default function AIDebate() {
                     </button>
                   </div>
 
-                  {/* COMMUTATEUR DIRECT DÉFILEMENT AUTOMATIQUE (EN MODE DÉFILEMENT) */}
-                  {displayMode === "stream" && (
-                    <button
-                      onClick={() => {
-                        setAutoScrollActive(prev => {
-                          const next = !prev;
-                          if (next) {
-                            setUnreadCount(0);
-                            setLastUnreadSpeaker(null);
-                            isProgrammaticScrollRef.current = true;
-                            bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-                            setTimeout(() => { isProgrammaticScrollRef.current = false; }, 600);
-                          }
-                          return next;
-                        });
-                      }}
-                      className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs font-bold transition-all border cursor-pointer select-none ${
-                        autoScrollActive
-                          ? "bg-emerald-500/15 border-emerald-500/35 text-emerald-300 hover:bg-emerald-500/25"
-                          : "bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30"
-                      }`}
-                      title={autoScrollActive ? "Auto-défilement ACTIF : suit les nouvelles répliques. Cliquez pour figer la vue et lire tranquillement sans bouger." : "Auto-défilement EN PAUSE : l'écran reste strictement fixe. Cliquez pour réactiver le suivi vers le bas."}
-                    >
-                      {autoScrollActive ? (
-                        <>
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
-                          <span className="hidden md:inline">Suivi auto :</span>
-                          <span>ACTIF</span>
-                        </>
-                      ) : (
-                        <>
-                          <Pause className="w-3 h-3 text-amber-300 shrink-0" />
-                          <span className="hidden md:inline">Suivi auto :</span>
-                          <span>FIGÉ</span>
-                        </>
-                      )}
-                    </button>
-                  )}
+                  {/* COMMUTATEUR PROTECTION DE LECTURE (ANTI-SAUT) */}
+                  <button
+                    onClick={() => {
+                      setReadingShield(prev => !prev);
+                      if (readingShield) {
+                        // Passé en suivi direct
+                        setAutoScrollActive(true);
+                      }
+                    }}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold transition-all border cursor-pointer select-none ${
+                      readingShield
+                        ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300 hover:bg-emerald-500/25 shadow-sm"
+                        : "bg-amber-500/20 border-amber-500/40 text-amber-300 hover:bg-amber-500/30"
+                    }`}
+                    title={
+                      readingShield
+                        ? "Protection de lecture ACTIVE : l'écran ne saute JAMAIS lorsqu'une IA répond. Vous lisez sereinement à votre rythme et scrollez librement. Cliquez pour passer en suivi direct."
+                        : "Suivi direct ACTIF : l'écran défile vers le bas à chaque réponse. Cliquez pour activer la Protection de lecture anti-saut."
+                    }
+                  >
+                    {readingShield ? (
+                      <>
+                        <ShieldCheck className="w-3.5 h-3.5 text-[#00f5c4] shrink-0" />
+                        <span className="hidden md:inline">Lecture protégée :</span>
+                        <span className="text-[#00f5c4] font-extrabold">ANTI-SAUT</span>
+                      </>
+                    ) : (
+                      <>
+                        <Radio className="w-3.5 h-3.5 text-amber-300 shrink-0 animate-pulse" />
+                        <span className="hidden md:inline">Mode :</span>
+                        <span>Suivi direct</span>
+                      </>
+                    )}
+                  </button>
 
                   {/* BADGE ORDRE ALÉATOIRE */}
                   <div 
@@ -2278,12 +2578,12 @@ export default function AIDebate() {
 
                   {/* Affichage du Verdict détaillé de la Cour Éthique */}
                   {verdict && (
-                    <VerdictDisplay widgetVerdict={verdict} />
+                    <VerdictDisplay widgetVerdict={verdict} onShare={handleOpenShareActiveDebate} />
                   )}
 
                   {/* Synthèse textuelle */}
                   {summary && (
-                    <SummaryWidget summary={summary} topic={activeTopic} messagesCount={messages.length} />
+                    <SummaryWidget summary={summary} topic={activeTopic} messagesCount={messages.length} onShare={handleOpenShareActiveDebate} />
                   )}
 
                   {isClosed && !closingProgress && (
@@ -2291,14 +2591,22 @@ export default function AIDebate() {
                       <div className="flex items-start gap-3">
                         <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
                         <div>
-                          <div className="font-condensed font-bold text-sm text-emerald-400 tracking-wider uppercase mb-1">PROGÈS-VERBAL SAUVEGARDÉ</div>
+                          <div className="font-condensed font-bold text-sm text-emerald-400 tracking-wider uppercase mb-1">PROCÈS-VERBAL SAUVEGARDÉ</div>
                           <p className="text-[11px] text-[#777] leading-relaxed">
-                            La table ronde asymétrique a été validée et enregistrée avec succès. Vous pouvez consulter les archives de la session sous l'onglet "Archives" du studio de débat.
+                            La table ronde asymétrique a été validée et enregistrée avec succès. Vous pouvez désormais partager ou exporter le résultat complet via un lien unique, par e-mail ou sur vos réseaux.
                           </p>
-                          <div className="flex gap-2.5 mt-3">
+                          <div className="flex flex-wrap gap-2.5 mt-3">
+                            <button 
+                              onClick={handleOpenShareActiveDebate} 
+                              className="bg-[#00f5c4] hover:bg-[#00e0b0] text-black font-condensed font-extrabold text-[11px] uppercase tracking-wider py-1.5 px-4 rounded-lg cursor-pointer transition-all flex items-center gap-1.5 shadow-md shadow-[#00f5c4]/20"
+                              title="Envoyer ou partager le résultat (lien web, e-mail, réseaux, fichier HTML/Markdown)"
+                            >
+                              <Share2 className="w-3.5 h-3.5" />
+                              <span>Envoyer & Partager le résultat</span>
+                            </button>
                             <button 
                               onClick={handleReset} 
-                              className="bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 text-emerald-400 font-condensed font-bold text-[10px] uppercase tracking-wider py-1.5 px-3.5 rounded cursor-pointer transition-colors"
+                              className="bg-emerald-500/10 border border-emerald-500/20 hover:bg-emerald-500/20 text-emerald-400 font-condensed font-bold text-[10px] uppercase tracking-wider py-1.5 px-3.5 rounded-lg cursor-pointer transition-colors"
                             >
                               Entamer un nouveau débat
                             </button>
@@ -2308,25 +2616,45 @@ export default function AIDebate() {
                     </div>
                   )}
 
-                  {/* Notification discrète si l'utilisateur a scrollé vers le haut pour lire (Auto-scroll suspendu) */}
-                  {!autoScrollActive && (
+                  {/* Notification sereine lorsqu'une IA répond (Protège la position de lecture sans sursaut) */}
+                  {unreadCount > 0 && (
                     <div 
-                      className="sticky bottom-2 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-[#0d0f14]/95 border border-[#00f5c4]/40 text-white px-3.5 py-1.5 rounded-full shadow-2xl backdrop-blur-md text-xs select-none animate-fadeSlideUp"
-                      title="Votre position de lecture est préservée. Aucun saut automatique."
+                      className="sticky bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2.5 bg-[#0b0c10]/95 border border-[#00f5c4]/50 text-white px-4 py-2 rounded-full shadow-2xl backdrop-blur-md text-xs select-none animate-fadeSlideUp max-w-[95%] sm:max-w-md"
+                      title="Une IA a répondu en bas du fil. Votre position de lecture actuelle reste rigoureusement fixe."
                     >
-                      <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
-                      <span className="text-gray-300 text-[11px]">
-                        {unreadCount > 0 
-                          ? `${unreadCount} réplique${unreadCount > 1 ? 's' : ''} en attente (${lastUnreadSpeaker})`
-                          : "Lecture libre • Défilement figé"
+                      <span 
+                        className="w-2.5 h-2.5 rounded-full shrink-0 shadow animate-pulse" 
+                        style={{ backgroundColor: lastUnreadColor || "#00f5c4" }} 
+                      />
+                      <span className="text-gray-200 text-xs font-semibold truncate">
+                        {unreadCount === 1 
+                          ? `${lastUnreadSpeaker || "Une IA"} a répondu`
+                          : `${unreadCount} nouvelles réponses (${lastUnreadSpeaker})`
                         }
                       </span>
                       <button
-                        onClick={resumeAutoScroll}
-                        className="flex items-center gap-1 bg-[#00f5c4] hover:bg-[#00e0b0] text-black font-bold px-2.5 py-0.5 rounded-full text-[11px] cursor-pointer ml-1 transition-all shadow"
+                        onClick={scrollToLatestMessage}
+                        className="flex items-center gap-1 bg-[#00f5c4] hover:bg-[#00e0b0] text-black font-extrabold px-3 py-1 rounded-full text-xs cursor-pointer ml-auto transition-all shadow hover:scale-105 active:scale-95 shrink-0"
+                        title="Faire défiler doucement jusqu'à cette nouvelle intervention"
                       >
-                        <span>Aller au direct</span>
-                        <ArrowDown className="w-3 h-3" />
+                        <span>Lire la suite</span>
+                        <ArrowDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Indicateur discret si le suivi direct est suspendu manuellement sans nouveaux messages */}
+                  {!readingShield && !autoScrollActive && unreadCount === 0 && (
+                    <div 
+                      className="sticky bottom-3 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-[#0b0c10]/90 border border-white/20 text-white px-3 py-1 rounded-full shadow-xl backdrop-blur-md text-[11px] select-none animate-fadeSlideUp"
+                    >
+                      <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
+                      <span className="text-gray-300">Suivi direct en pause</span>
+                      <button
+                        onClick={resumeAutoScroll}
+                        className="text-[#00f5c4] hover:underline font-bold ml-1 cursor-pointer"
+                      >
+                        Reprendre ↓
                       </button>
                     </div>
                   )}
@@ -2466,7 +2794,23 @@ export default function AIDebate() {
                       Session enregistrée le {fmtDate(selectedArchive.closedAt)} · {selectedArchive.messages.length} interventions actives
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button 
+                      onClick={() => handleOpenShareArchive(selectedArchive, "html")}
+                      className="flex items-center gap-1.5 text-xs text-[#00f5c4] bg-[#00f5c4]/15 hover:bg-[#00f5c4]/25 border border-[#00f5c4]/30 font-bold rounded px-3 py-1.5 cursor-pointer uppercase transition-all shadow-sm"
+                      title="Envoyer ou exporter ce débat archivé sous forme de fichier HTML"
+                    >
+                      <FileCode className="w-3.5 h-3.5 text-[#00f5c4]" />
+                      <span>Fichier HTML</span>
+                    </button>
+                    <button 
+                      onClick={() => handleOpenShareArchive(selectedArchive, "html")}
+                      className="flex items-center gap-1.5 text-xs text-black bg-[#00f5c4] hover:bg-[#00e0b0] font-extrabold rounded px-3 py-1.5 cursor-pointer uppercase transition-all shadow-sm shadow-[#00f5c4]/20"
+                      title="Partager et envoyer le résultat de ce débat archivé"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>Partager</span>
+                    </button>
                     <button 
                       onClick={() => setIsDriveModalOpen(true)}
                       className="flex items-center gap-1.5 text-xs text-blue-300 bg-blue-500/10 hover:bg-blue-500/20 border border-blue-500/20 rounded px-3 py-1.5 font-bold font-condensed cursor-pointer uppercase transition-colors"
@@ -2486,12 +2830,12 @@ export default function AIDebate() {
 
                 {/* Verdict détaillé d'archive si présent */}
                 {selectedArchive.verdict && (
-                  <VerdictDisplay widgetVerdict={selectedArchive.verdict} />
+                  <VerdictDisplay widgetVerdict={selectedArchive.verdict} onShare={() => handleOpenShareArchive(selectedArchive)} />
                 )}
 
                 {/* Synthèse finale d'archive */}
                 {selectedArchive.summary && (
-                  <SummaryWidget summary={selectedArchive.summary} topic={selectedArchive.topic} messagesCount={selectedArchive.messages.length} />
+                  <SummaryWidget summary={selectedArchive.summary} topic={selectedArchive.topic} messagesCount={selectedArchive.messages.length} onShare={() => handleOpenShareArchive(selectedArchive)} />
                 )}
 
                 <div className="mt-8 flex flex-col gap-4">
@@ -2563,14 +2907,27 @@ export default function AIDebate() {
                             )}
                           </div>
                           
-                          <div className="text-right shrink-0">
-                            <div className="text-2xl font-black font-condensed text-[#00f5c4] leading-none mb-0.5">
-                              {arc.messages.length}
+                          <div className="text-right shrink-0 flex flex-col items-end justify-between">
+                            <div>
+                              <div className="text-2xl font-black font-condensed text-[#00f5c4] leading-none mb-0.5">
+                                {arc.messages.length}
+                              </div>
+                              <div className="text-[9px] text-[#555] font-condensed uppercase tracking-wider mb-1">Dispositions</div>
+                              <div className="text-xs text-[#666] font-condensed">
+                                {new Date(arc.closedAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
+                              </div>
                             </div>
-                            <div className="text-[9px] text-[#555] font-condensed uppercase tracking-wider mb-2">Dispositions</div>
-                            <div className="text-xs text-[#666] font-condensed">
-                              {new Date(arc.closedAt).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })}
-                            </div>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleOpenShareArchive(arc);
+                              }}
+                              className="mt-2 flex items-center gap-1 text-[10px] text-gray-300 hover:text-black bg-white/[0.05] hover:bg-[#00f5c4] border border-white/[0.1] hover:border-[#00f5c4] px-2 py-0.5 rounded cursor-pointer transition-all font-condensed uppercase font-bold shadow-sm"
+                              title="Partager et envoyer le résultat de ce débat"
+                            >
+                              <Share2 className="w-3 h-3" />
+                              <span>Partager</span>
+                            </button>
                           </div>
                         </div>
                       </div>
@@ -2671,6 +3028,31 @@ export default function AIDebate() {
           setVerdict(null);
           setSummary("");
         }}
+      />
+
+      {/* MODAL DE PARTAGE & D'ENVOI DU RÉSULTAT */}
+      {shareDebatePayload && (
+        <ShareDebateModal
+          isOpen={isShareModalOpen}
+          onClose={() => setIsShareModalOpen(false)}
+          topic={shareDebatePayload.topic}
+          messages={shareDebatePayload.messages}
+          verdict={shareDebatePayload.verdict}
+          summary={shareDebatePayload.summary}
+          treaty={shareDebatePayload.treaty}
+          defaultTab={shareDebatePayload.defaultTab}
+        />
+      )}
+
+      {/* MODAL CLÉS API, MODÈLES ÉVOLUTIFS & GARANTIE DE LIBERTÉ */}
+      <ApiKeysAndModelsModal
+        isOpen={isApiKeysModalOpen}
+        onClose={() => setIsApiKeysModalOpen(false)}
+        apiKeys={apiKeys}
+        apiModels={apiModels}
+        onSaveApiKey={handleSaveApiKey}
+        onSaveApiModel={handleSaveApiModel}
+        onResetAllKeys={handleResetAllKeys}
       />
     </div>
   );
@@ -2810,25 +3192,48 @@ function ThinkingBubble({ agentId }: { agentId: string }) {
 }
 
 // ─── COMPONENT: SUMMARY WIDGET ────────────────────────────────────────────────
-function SummaryWidget({ summary, topic, messagesCount }: { summary: string; topic: Topic; messagesCount: number }) {
+function SummaryWidget({ 
+  summary, 
+  topic, 
+  messagesCount,
+  onShare 
+}: { 
+  summary: string; 
+  topic: Topic; 
+  messagesCount: number;
+  onShare?: () => void;
+}) {
   const paragraphs = summary.split("\n").filter(p => p.trim());
 
   return (
     <div className="animate-summaryReveal border border-[#00f5c4]/15 bg-gradient-to-br from-[#00f5c4]/[0.02] to-[#b07aff]/[0.02] rounded-xl overflow-hidden mt-4">
       
       {/* Header Titre */}
-      <div className="px-5 py-4 border-b border-white/[0.04] bg-white/[0.01] flex items-center gap-3">
-        <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#00f5c4] to-[#b07aff] flex items-center justify-center text-black shrink-0 font-bold shadow-md shadow-black select-none">
-          <ClipboardList className="w-4 h-4 text-black" />
-        </div>
-        <div>
-          <div className="font-condensed font-black tracking-widest text-sm text-[#00f5c4] uppercase">
-            SYNTHÈSE EXÉCUTIVE DES DÉBATS
+      <div className="px-5 py-4 border-b border-white/[0.04] bg-white/[0.01] flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-[#00f5c4] to-[#b07aff] flex items-center justify-center text-black shrink-0 font-bold shadow-md shadow-black select-none">
+            <ClipboardList className="w-4 h-4 text-black" />
           </div>
-          <div className="text-[10px] text-gray-500 uppercase tracking-widest font-condensed">
-            Rapport critique et synthèse transversale par Gemini-3.5-Flash
+          <div className="min-w-0">
+            <div className="font-condensed font-black tracking-widest text-sm text-[#00f5c4] uppercase truncate">
+              SYNTHÈSE EXÉCUTIVE DES DÉBATS
+            </div>
+            <div className="text-[10px] text-gray-500 uppercase tracking-widest font-condensed truncate">
+              Rapport critique et synthèse transversale par Gemini-3.5-Flash
+            </div>
           </div>
         </div>
+
+        {onShare && (
+          <button
+            onClick={onShare}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#00f5c4]/15 hover:bg-[#00f5c4]/25 border border-[#00f5c4]/30 text-[#00f5c4] text-xs font-bold uppercase tracking-wider cursor-pointer transition-all shrink-0 shadow-sm"
+            title="Envoyer ou partager cette synthèse et le débat"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Partager</span>
+          </button>
+        )}
       </div>
 
       {/* Corps du texte */}
@@ -2859,7 +3264,13 @@ function SummaryWidget({ summary, topic, messagesCount }: { summary: string; top
 }
 
 // ─── COMPONENT: JURY VERDICT DISPLAY ──────────────────────────────────────────
-function VerdictDisplay({ widgetVerdict }: { widgetVerdict: Verdict }) {
+function VerdictDisplay({ 
+  widgetVerdict,
+  onShare
+}: { 
+  widgetVerdict: Verdict;
+  onShare?: () => void;
+}) {
   // Traduction propre des id en noms
   const translateAgentName = (id: string) => {
     if (id === "user") return "Humain (Vous)";
@@ -2877,18 +3288,31 @@ function VerdictDisplay({ widgetVerdict }: { widgetVerdict: Verdict }) {
     <div className="animate-summaryReveal border border-amber-500/20 bg-gradient-to-br from-amber-500/[0.03] to-yellow-600/[0.03] rounded-xl overflow-hidden mt-4">
       
       {/* Header Verdict */}
-      <div className="px-5 py-4 border-b border-white/[0.04] bg-white/[0.01] flex items-center gap-3">
-        <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-500 flex items-center justify-center text-black shrink-0 font-bold shadow-md shadow-black select-none">
-          <Award className="w-5 h-5 text-black" />
-        </div>
-        <div>
-          <div className="font-condensed font-black tracking-widest text-sm text-amber-400 uppercase">
-            VERDICT DU JURY SUPRÊME DES MODÈLES
+      <div className="px-5 py-4 border-b border-white/[0.04] bg-white/[0.01] flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-9 h-9 rounded-full bg-gradient-to-tr from-amber-400 to-yellow-500 flex items-center justify-center text-black shrink-0 font-bold shadow-md shadow-black select-none">
+            <Award className="w-5 h-5 text-black" />
           </div>
-          <div className="text-[10px] text-gray-500 uppercase tracking-widest font-condensed mt-0.5">
-            ÉVALUATION CRITIQUE PROTOCOLÉE PAR GEMINI-3.5-FLASH
+          <div className="min-w-0">
+            <div className="font-condensed font-black tracking-widest text-sm text-amber-400 uppercase truncate">
+              VERDICT DU JURY SUPRÊME DES MODÈLES
+            </div>
+            <div className="text-[10px] text-gray-500 uppercase tracking-widest font-condensed mt-0.5 truncate">
+              ÉVALUATION CRITIQUE PROTOCOLÉE PAR GEMINI-3.5-FLASH
+            </div>
           </div>
         </div>
+
+        {onShare && (
+          <button
+            onClick={onShare}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/30 text-amber-300 text-xs font-bold uppercase tracking-wider cursor-pointer transition-all shrink-0 shadow-sm"
+            title="Envoyer ou partager ce verdict et le résultat du débat"
+          >
+            <Share2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Partager</span>
+          </button>
+        )}
       </div>
 
       {/* Contenu du Verdict */}

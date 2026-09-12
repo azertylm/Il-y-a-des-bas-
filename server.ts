@@ -93,11 +93,17 @@ async function generateWithGemini(
   request: {
     contents: string;
     config?: any;
-  }
+  },
+  preferredModel?: string
 ): Promise<{ text: string; modelUsed: string }> {
   let lastError: any = null;
+  const modelsToTry = preferredModel 
+    ? (GEMINI_TEXT_MODELS.includes(preferredModel) 
+        ? [preferredModel, ...GEMINI_TEXT_MODELS.filter(m => m !== preferredModel)] 
+        : [preferredModel, ...GEMINI_TEXT_MODELS])
+    : GEMINI_TEXT_MODELS;
 
-  for (const model of GEMINI_TEXT_MODELS) {
+  for (const model of modelsToTry) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const timeoutPromise = new Promise<{ text: string; modelUsed: string }>((_, reject) =>
@@ -207,7 +213,92 @@ app.delete("/api/archives/:key", (req, res) => {
   const next = current.filter(item => item.key !== key);
   saveArchives(next);
   res.json({ success: true });
-})// --- LOCAL DEBATE CONFIGURATION & PROSE ENGINE FALLBACKS ---
+});
+
+// File path for durable shared debate links
+const SHARES_FILE = path.join(process.cwd(), "shares.json");
+
+function loadShares(): Record<string, any> {
+  try {
+    if (fs.existsSync(SHARES_FILE)) {
+      const data = fs.readFileSync(SHARES_FILE, "utf-8");
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.log("Lecture des partages locaux indisponible.");
+  }
+  return {};
+}
+
+function saveShares(shares: Record<string, any>) {
+  try {
+    fs.writeFileSync(SHARES_FILE, JSON.stringify(shares, null, 2), "utf-8");
+  } catch (e) {
+    console.log("Sauvegarde des partages locaux indisponible.");
+  }
+}
+
+// Create or update a shareable link for a debate result
+app.post("/api/share", (req, res) => {
+  const debateData = req.body;
+  if (!debateData || !debateData.topic) {
+    return res.status(400).json({ error: "Données de débat incomplètes pour le partage." });
+  }
+
+  const shares = loadShares();
+  const randomSuffix = Math.random().toString(36).substring(2, 7);
+  const shareId = debateData.id || `debat-${Date.now().toString(36)}-${randomSuffix}`;
+
+  const shareRecord = {
+    id: shareId,
+    sharedAt: new Date().toISOString(),
+    topic: debateData.topic,
+    messages: debateData.messages || [],
+    verdict: debateData.verdict || null,
+    summary: debateData.summary || null,
+    treaty: debateData.treaty || null,
+    claps: debateData.claps || 0,
+    activeAgents: debateData.activeAgents || []
+  };
+
+  shares[shareId] = shareRecord;
+  saveShares(shares);
+
+  res.json({
+    success: true,
+    shareId,
+    shareRecord
+  });
+});
+
+// Retrieve a shared debate by ID
+app.get("/api/share/:id", (req, res) => {
+  const { id } = req.params;
+  const shares = loadShares();
+  const record = shares[id];
+
+  if (!record) {
+    // Check in archives if key or id matches as fallback
+    const archives = loadArchives();
+    const fromArchive = archives.find((a: any) => a.key === id || a.id === id);
+    if (fromArchive) {
+      return res.json({
+        success: true,
+        shareId: id,
+        shareRecord: fromArchive
+      });
+    }
+    return res.status(404).json({ error: "Ce résultat de débat partagé est introuvable ou a été archivé." });
+  }
+
+  res.json({
+    success: true,
+    shareId: id,
+    shareRecord: record
+  });
+});
+
+// --- LOCAL DEBATE CONFIGURATION & PROSE ENGINE FALLBACKS ---
 
 const FALLBACK_TOPICS = [
   {
@@ -490,7 +581,165 @@ Le retour doit être un tableau JSON valide. Ne renvoie AUCUN texte introductif 
   }
 });
 
-// Generate an individual agent speech
+// Test API Key and its assigned model directly
+app.post("/api/debate/test-key", async (req, res) => {
+  const { provider, model, key } = req.body;
+  const startTime = Date.now();
+
+  try {
+    if (!key || typeof key !== "string" || !key.trim()) {
+      return res.status(400).json({ success: false, error: "Clé API absente ou invalide." });
+    }
+
+    const cleanKey = key.trim();
+
+    if (provider === "chatgpt") {
+      const modelToUse = model || "gpt-4o-mini";
+      const response = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        signal: AbortSignal.timeout(6000),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${cleanKey}`
+        },
+        body: JSON.stringify({
+          model: modelToUse,
+          max_tokens: 15,
+          messages: [{ role: "user", content: "Réponds simplement 'Test réussi'." }]
+        })
+      });
+      const latency = Date.now() - startTime;
+      if (response.ok) {
+        const data = await response.json();
+        const reply = data?.choices?.[0]?.message?.content?.trim() || "OK";
+        return res.json({ success: true, provider, modelUsed: modelToUse, latencyMs: latency, reply });
+      } else {
+        const errText = await response.text();
+        return res.json({ success: false, provider, modelUsed: modelToUse, error: `Erreur OpenAI (${response.status}): ${formatErrorSummary(errText)}` });
+      }
+    }
+
+    if (provider === "claude") {
+      const modelToUse = model || "claude-3-5-haiku-20241022";
+      const response = await fetch("https://api.anthropic.com/v1/messages", {
+        method: "POST",
+        signal: AbortSignal.timeout(6000),
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": cleanKey,
+          "anthropic-version": "2023-06-01"
+        },
+        body: JSON.stringify({
+          model: modelToUse,
+          max_tokens: 15,
+          messages: [{ role: "user", content: "Réponds simplement 'Test réussi'." }]
+        })
+      });
+      const latency = Date.now() - startTime;
+      if (response.ok) {
+        const data = await response.json();
+        const reply = data?.content?.[0]?.text?.trim() || "OK";
+        return res.json({ success: true, provider, modelUsed: modelToUse, latencyMs: latency, reply });
+      } else {
+        const errText = await response.text();
+        return res.json({ success: false, provider, modelUsed: modelToUse, error: `Erreur Anthropic (${response.status}): ${formatErrorSummary(errText)}` });
+      }
+    }
+
+    if (provider === "gemini") {
+      const modelToUse = model || "gemini-3.1-flash-lite";
+      const ai = new GoogleGenAI({ apiKey: cleanKey });
+      const resp = await ai.models.generateContent({
+        model: modelToUse,
+        contents: "Réponds simplement 'Test réussi'."
+      });
+      const latency = Date.now() - startTime;
+      return res.json({ success: true, provider, modelUsed: modelToUse, latencyMs: latency, reply: resp?.text?.trim() || "OK" });
+    }
+
+    if (provider === "deepseek") {
+      const modelToUse = model || "deepseek-chat";
+      const response = await fetch("https://api.deepseek.com/chat/completions", {
+        method: "POST",
+        signal: AbortSignal.timeout(6000),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${cleanKey}`
+        },
+        body: JSON.stringify({
+          model: modelToUse,
+          max_tokens: 15,
+          messages: [{ role: "user", content: "Réponds simplement 'Test réussi'." }]
+        })
+      });
+      const latency = Date.now() - startTime;
+      if (response.ok) {
+        const data = await response.json();
+        const reply = data?.choices?.[0]?.message?.content?.trim() || "OK";
+        return res.json({ success: true, provider, modelUsed: modelToUse, latencyMs: latency, reply });
+      } else {
+        const errText = await response.text();
+        return res.json({ success: false, provider, modelUsed: modelToUse, error: `Erreur DeepSeek (${response.status}): ${formatErrorSummary(errText)}` });
+      }
+    }
+
+    if (provider === "mistral") {
+      const modelToUse = model || "mistral-large-latest";
+      const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
+        method: "POST",
+        signal: AbortSignal.timeout(6000),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${cleanKey}`
+        },
+        body: JSON.stringify({
+          model: modelToUse,
+          max_tokens: 15,
+          messages: [{ role: "user", content: "Réponds simplement 'Test réussi'." }]
+        })
+      });
+      const latency = Date.now() - startTime;
+      if (response.ok) {
+        const data = await response.json();
+        const reply = data?.choices?.[0]?.message?.content?.trim() || "OK";
+        return res.json({ success: true, provider, modelUsed: modelToUse, latencyMs: latency, reply });
+      } else {
+        const errText = await response.text();
+        return res.json({ success: false, provider, modelUsed: modelToUse, error: `Erreur Mistral (${response.status}): ${formatErrorSummary(errText)}` });
+      }
+    }
+
+    if (provider === "grok") {
+      const modelToUse = model || "grok-2-1212";
+      const response = await fetch("https://api.x.ai/v1/chat/completions", {
+        method: "POST",
+        signal: AbortSignal.timeout(6000),
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${cleanKey}`
+        },
+        body: JSON.stringify({
+          model: modelToUse,
+          max_tokens: 15,
+          messages: [{ role: "user", content: "Réponds simplement 'Test réussi'." }]
+        })
+      });
+      const latency = Date.now() - startTime;
+      if (response.ok) {
+        const data = await response.json();
+        const reply = data?.choices?.[0]?.message?.content?.trim() || "OK";
+        return res.json({ success: true, provider, modelUsed: modelToUse, latencyMs: latency, reply });
+      } else {
+        const errText = await response.text();
+        return res.json({ success: false, provider, modelUsed: modelToUse, error: `Erreur Grok (${response.status}): ${formatErrorSummary(errText)}` });
+      }
+    }
+
+    return res.status(400).json({ success: false, error: "Fournisseur non reconnu." });
+  } catch (err: any) {
+    return res.json({ success: false, provider, error: formatErrorSummary(err) });
+  }
+});
 app.post("/api/debate/generate", async (req, res) => {
   const { systemPrompt, topicTitle, topicDescription, context, agentId, speed } = req.body;
   const isJury = topicTitle && (topicTitle.startsWith("JURY :") || topicTitle.includes("JURY"));
@@ -506,7 +755,8 @@ ${topicDescription}
 Contexte du débat actuel (réponses précédentes) :
 ${context ? context : "Le débat commence, tu ouvres la discussion."}
 
-Consignes de rapidité et d'impact :
+Consignes de liberté, de rapidité et d'impact :
+- LIBERTÉ TOTALE D'OPINION : Tu disposes d'une liberté intellectuelle et dialectique absolue. Aucun point de vue, parti-pris, thèse ou conclusion ne t'est suggéré ni imposé. Tu es entièrement souverain pour adopter la posture de ton choix (favorable, opposée, sceptique, alternative ou médiane) selon ta propre analyse.
 - Sois vif, direct et percutant.
 - Limite impérativement ta tirade à 2 paragraphes concis (environ 70 à 110 mots au total).
 - Ne commence JAMAIS par une formule de politesse ("Bonjour", "Je prends la parole", etc.). Entre immédiatement dans le vif de ton argument.
@@ -521,6 +771,7 @@ Consignes de rapidité et d'impact :
     if (resolvedAgentId === "chatgpt") {
       const openAIKey = req.headers["x-openai-api-key"];
       if (openAIKey) {
+        const chosenModel = (req.headers["x-openai-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "gpt-4o-mini";
         try {
           const response = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
@@ -530,7 +781,7 @@ Consignes de rapidité et d'impact :
               "Authorization": `Bearer ${openAIKey}`
             },
             body: JSON.stringify({
-              model: "gpt-4o-mini",
+              model: chosenModel,
               max_tokens: 250,
               messages: [
                 { role: "system", content: systemPrompt },
@@ -542,7 +793,7 @@ Consignes de rapidité et d'impact :
           if (response.ok) {
             const data = await response.json();
             if (data?.choices?.[0]?.message?.content) {
-              return res.json({ text: data.choices[0].message.content, provider: "openai" });
+              return res.json({ text: data.choices[0].message.content, provider: "openai", modelUsed: chosenModel });
             }
           } else {
             const errorText = await response.text();
@@ -559,6 +810,7 @@ Consignes de rapidité et d'impact :
     if (resolvedAgentId === "claude") {
       const anthropicKey = req.headers["x-anthropic-api-key"] || req.headers["x-api-key"];
       if (anthropicKey) {
+        const chosenModel = (req.headers["x-anthropic-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "claude-3-5-haiku-20241022";
         try {
           const response = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
@@ -569,7 +821,7 @@ Consignes de rapidité et d'impact :
               "anthropic-version": "2023-06-01"
             },
             body: JSON.stringify({
-              model: "claude-3-5-haiku-20241022",
+              model: chosenModel,
               max_tokens: 250,
               system: systemPrompt,
               messages: [
@@ -581,7 +833,7 @@ Consignes de rapidité et d'impact :
           if (response.ok) {
             const data = await response.json();
             if (data?.content?.[0]?.text) {
-              return res.json({ text: data.content[0].text, provider: "anthropic" });
+              return res.json({ text: data.content[0].text, provider: "anthropic", modelUsed: chosenModel });
             }
           } else {
             const errorText = await response.text();
@@ -598,6 +850,7 @@ Consignes de rapidité et d'impact :
     if (resolvedAgentId === "deepseek") {
       const deepseekKey = req.headers["x-deepseek-api-key"];
       if (deepseekKey) {
+        const chosenModel = (req.headers["x-deepseek-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "deepseek-chat";
         try {
           const response = await fetch("https://api.deepseek.com/chat/completions", {
             method: "POST",
@@ -607,7 +860,7 @@ Consignes de rapidité et d'impact :
               "Authorization": `Bearer ${deepseekKey}`
             },
             body: JSON.stringify({
-              model: "deepseek-chat",
+              model: chosenModel,
               max_tokens: 250,
               messages: [
                 { role: "system", content: systemPrompt },
@@ -619,7 +872,7 @@ Consignes de rapidité et d'impact :
           if (response.ok) {
             const data = await response.json();
             if (data?.choices?.[0]?.message?.content) {
-              return res.json({ text: data.choices[0].message.content, provider: "deepseek" });
+              return res.json({ text: data.choices[0].message.content, provider: "deepseek", modelUsed: chosenModel });
             }
           } else {
             const errorText = await response.text();
@@ -636,6 +889,7 @@ Consignes de rapidité et d'impact :
     if (resolvedAgentId === "mistral") {
       const mistralKey = req.headers["x-mistral-api-key"];
       if (mistralKey) {
+        const chosenModel = (req.headers["x-mistral-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "mistral-large-latest";
         try {
           const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
             method: "POST",
@@ -645,7 +899,7 @@ Consignes de rapidité et d'impact :
               "Authorization": `Bearer ${mistralKey}`
             },
             body: JSON.stringify({
-              model: "mistral-large-latest",
+              model: chosenModel,
               max_tokens: 250,
               messages: [
                 { role: "system", content: systemPrompt },
@@ -657,7 +911,7 @@ Consignes de rapidité et d'impact :
           if (response.ok) {
             const data = await response.json();
             if (data?.choices?.[0]?.message?.content) {
-              return res.json({ text: data.choices[0].message.content, provider: "mistral" });
+              return res.json({ text: data.choices[0].message.content, provider: "mistral", modelUsed: chosenModel });
             }
           } else {
             const errorText = await response.text();
@@ -674,6 +928,7 @@ Consignes de rapidité et d'impact :
     if (resolvedAgentId === "grok") {
       const grokKey = req.headers["x-grok-api-key"];
       if (grokKey) {
+        const chosenModel = (req.headers["x-grok-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "grok-2-1212";
         try {
           const response = await fetch("https://api.x.ai/v1/chat/completions", {
             method: "POST",
@@ -683,7 +938,7 @@ Consignes de rapidité et d'impact :
               "Authorization": `Bearer ${grokKey}`
             },
             body: JSON.stringify({
-              model: "grok-2-1212",
+              model: chosenModel,
               max_tokens: 250,
               messages: [
                 { role: "system", content: systemPrompt },
@@ -695,7 +950,7 @@ Consignes de rapidité et d'impact :
           if (response.ok) {
             const data = await response.json();
             if (data?.choices?.[0]?.message?.content) {
-              return res.json({ text: data.choices[0].message.content, provider: "grok" });
+              return res.json({ text: data.choices[0].message.content, provider: "grok", modelUsed: chosenModel });
             }
           } else {
             const errorText = await response.text();
@@ -714,6 +969,8 @@ Consignes de rapidité et d'impact :
       ? new GoogleGenAI({ apiKey: String(customGeminiKey) }) 
       : getGeminiAI();
 
+    const preferredGeminiModel = (req.headers["x-gemini-model"] as string) || (req.headers["x-model"] as string) || req.body.model;
+
     const genResult = await generateWithGemini(ai, {
       contents: prompt,
       config: {
@@ -721,7 +978,7 @@ Consignes de rapidité et d'impact :
         temperature: 0.85,
         maxOutputTokens: isTurbo ? 230 : 380,
       },
-    });
+    }, preferredGeminiModel);
 
     return res.json({ 
       text: genResult.text, 

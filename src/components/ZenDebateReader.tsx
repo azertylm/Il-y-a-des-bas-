@@ -272,10 +272,18 @@ export function ZenDebateReader({
               }
             }}
             disabled={zenActiveIndex >= messages.length - 1 && !isReadingWaiting}
-            className="p-1 sm:px-2 sm:py-1 rounded-md bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-30 disabled:pointer-events-none text-gray-300 hover:text-white border border-white/[0.08] text-xs font-bold flex items-center gap-1 transition-all cursor-pointer"
+            className={`p-1 sm:px-2.5 sm:py-1 rounded-md border text-xs font-bold flex items-center gap-1 transition-all cursor-pointer ${
+              zenActiveIndex < messages.length - 1
+                ? "bg-[#00f5c4]/15 border-[#00f5c4]/60 text-[#00f5c4] hover:bg-[#00f5c4]/25 shadow-sm"
+                : "bg-white/[0.04] hover:bg-white/[0.08] disabled:opacity-30 disabled:pointer-events-none text-gray-300 hover:text-white border-white/[0.08]"
+            }`}
             title="Intervention suivante (Flèche Droite →)"
           >
-            <span className="hidden sm:inline">Suivant</span>
+            <span className="hidden sm:inline">
+              {zenActiveIndex < messages.length - 1 
+                ? `Suite (${messages[zenActiveIndex + 1]?.agentName})` 
+                : "Suivant"}
+            </span>
             <ChevronRight className="w-3.5 h-3.5" />
           </button>
         </div>
