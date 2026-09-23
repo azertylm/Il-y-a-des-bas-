@@ -68,6 +68,7 @@ import { GoogleDriveModal } from "./components/GoogleDriveModal";
 import { ZenDebateReader } from "./components/ZenDebateReader";
 import { ShareDebateModal } from "./components/ShareDebateModal";
 import { ApiKeysAndModelsModal } from "./components/ApiKeysAndModelsModal";
+import { SubscriptionModal } from "./components/SubscriptionModal";
 import { Message, Topic, Archive, Verdict, Agent } from "./types";
 
 // ─── THÈMES TEMPORELS PAR DÉFAUT ─────────────────────────────────────────────
@@ -242,6 +243,7 @@ export default function AIDebate() {
   const [isRadarOpen, setIsRadarOpen] = useState(false);
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
+  const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [sharedViewBanner, setSharedViewBanner] = useState<{ id: string; title: string } | null>(null);
   const [shareDebatePayload, setShareDebatePayload] = useState<{
     topic: Topic;
@@ -1536,6 +1538,20 @@ export default function AIDebate() {
           >
             <Share2 className="w-3.5 h-3.5 shrink-0" />
             <span>Partager</span>
+          </button>
+
+          {/* BOUTON PASS ALPHABETTE & TARIFS */}
+          <button
+            onClick={() => setIsSubscriptionModalOpen(true)}
+            title="ALPHABETTE SASU (La Grande-Motte) : Abonnement IADébat à 15 € TTC/an ou Pass Bouquet complet à 40 € TTC/an"
+            className="flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border border-purple-500/40 bg-purple-500/15 hover:bg-purple-500/25 text-purple-200 font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-[#00f5c4] shrink-0" />
+            <span className="hidden md:inline">Pass ALPHABETTE</span>
+            <span className="md:hidden">Pass</span>
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-400/20 text-purple-300 font-bold border border-purple-400/30">
+              15€/an
+            </span>
           </button>
 
           <div className="text-right shrink-0 hidden xl:block border-l border-white/[0.08] pl-3">
@@ -2969,6 +2985,16 @@ export default function AIDebate() {
               </div>
             );
           })}
+
+          <button
+            onClick={() => setIsSubscriptionModalOpen(true)}
+            className="text-[10px] text-gray-400 hover:text-[#00f5c4] flex items-center gap-1.5 font-mono transition-colors ml-auto px-2 py-0.5 rounded hover:bg-white/[0.04] cursor-pointer"
+            title="ALPHABETTE SASU · Solutions logicielles souveraines (La Grande-Motte)"
+          >
+            <ShieldCheck className="w-3 h-3 text-[#00f5c4]" />
+            <span className="hidden lg:inline">ALPHABETTE SASU · Pass 40€/an · IADébat 15€/an</span>
+            <span className="lg:hidden">ALPHABETTE · 15€/an</span>
+          </button>
         </footer>
       )}
 
@@ -3053,6 +3079,12 @@ export default function AIDebate() {
         onSaveApiKey={handleSaveApiKey}
         onSaveApiModel={handleSaveApiModel}
         onResetAllKeys={handleResetAllKeys}
+      />
+
+      {/* MODAL PASS ALPHABETTE & TARIFS OFFICIELS */}
+      <SubscriptionModal
+        isOpen={isSubscriptionModalOpen}
+        onClose={() => setIsSubscriptionModalOpen(false)}
       />
     </div>
   );
