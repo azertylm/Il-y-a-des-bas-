@@ -69,7 +69,15 @@ import { ZenDebateReader } from "./components/ZenDebateReader";
 import { ShareDebateModal } from "./components/ShareDebateModal";
 import { ApiKeysAndModelsModal } from "./components/ApiKeysAndModelsModal";
 import { SubscriptionModal } from "./components/SubscriptionModal";
-import { Message, Topic, Archive, Verdict, Agent } from "./types";
+import { AlphabetteAccountModal } from "./components/AlphabetteAccountModal";
+import { Message, Topic, Archive, Verdict, Agent, AlphabetteAccount } from "./types";
+import { 
+  loadAlphabetteAccount, 
+  ALPHABETTE_SYNC_CHANNEL,
+  getTrialDaysRemaining,
+  ALPHABETTE_HUB_URL,
+  ALPHABETTE_FOOTER_TEXT
+} from "./utils/alphabetteAuth";
 
 // ─── THÈMES TEMPORELS PAR DÉFAUT ─────────────────────────────────────────────
 const DEFAULT_TOPICS: Topic[] = [
@@ -244,6 +252,26 @@ export default function AIDebate() {
   const [isDriveModalOpen, setIsDriveModalOpen] = useState(false);
   const [isShareModalOpen, setIsShareModalOpen] = useState(false);
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
+  const [alphabetteAccount, setAlphabetteAccount] = useState<AlphabetteAccount | null>(() => loadAlphabetteAccount());
+  const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+
+  // Synchronisation inter-applications ALPHABETTE (BroadcastChannel & storage)
+  useEffect(() => {
+    if (typeof BroadcastChannel !== "undefined") {
+      const channel = new BroadcastChannel(ALPHABETTE_SYNC_CHANNEL);
+      channel.onmessage = (event) => {
+        if (event.data?.type === "ACCOUNT_UPDATED") {
+          setAlphabetteAccount(event.data.account);
+        } else if (event.data?.type === "ACCOUNT_CLEARED") {
+          setAlphabetteAccount(null);
+        }
+      };
+      return () => {
+        channel.close();
+      };
+    }
+  }, []);
+
   const [sharedViewBanner, setSharedViewBanner] = useState<{ id: string; title: string } | null>(null);
   const [shareDebatePayload, setShareDebatePayload] = useState<{
     topic: Topic;
@@ -1540,17 +1568,51 @@ export default function AIDebate() {
             <span>Partager</span>
           </button>
 
-          {/* BOUTON PASS ALPHABETTE & TARIFS */}
+          {/* BOUTON COMPTE ALPHABETTE UNIQUE & SOUVERAIN */}
+          {alphabetteAccount ? (
+            <button
+              onClick={() => setIsAccountModalOpen(true)}
+              title={`Compte ALPHABETTE Souverain Actif : ${alphabetteAccount.name} (${alphabetteAccount.planTitle}) - Cliquer pour gérer`}
+              className="flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0"
+            >
+              <span className={`w-2 h-2 rounded-full shrink-0 ${alphabetteAccount.isTrialActive ? "bg-amber-400 animate-pulse" : "bg-emerald-400 animate-pulse"}`} />
+              <span className="hidden sm:inline font-mono">{alphabetteAccount.name.split(" ")[0]}</span>
+              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-bold border ${
+                alphabetteAccount.isTrialActive 
+                  ? "bg-amber-400/20 text-amber-300 border-amber-400/30" 
+                  : "bg-emerald-400/20 text-emerald-300 border-emerald-400/30"
+              }`}>
+                {alphabetteAccount.isTrialActive 
+                  ? `Essai ${getTrialDaysRemaining(alphabetteAccount)}j`
+                  : `${alphabetteAccount.priceAnnualEur || 39}€/an`}
+              </span>
+            </button>
+          ) : (
+            <button
+              onClick={() => setIsAccountModalOpen(true)}
+              title="Créer un compte unifié ALPHABETTE - 7 jours d'essai offerts (Mistral AI Exclusif)"
+              className="flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border border-[#00f5c4]/40 bg-[#00f5c4]/10 hover:bg-[#00f5c4]/20 text-[#00f5c4] font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <span className="hidden sm:inline">Compte ALPHABETTE</span>
+              <span className="sm:hidden">Compte</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
+                7j offerts
+              </span>
+            </button>
+          )}
+
+          {/* BOUTON GRILLE TARIFAIRE OFFICIELLE & BOUQUET */}
           <button
             onClick={() => setIsSubscriptionModalOpen(true)}
-            title="ALPHABETTE SASU (La Grande-Motte) : Abonnement IADébat à 15 € TTC/an ou Pass Bouquet complet à 40 € TTC/an"
+            title="Grille Tarifaire Officielle Alphabette : Application Individuelle (39€/59€) ou Bouquet Alphabette (99€/199€)"
             className="flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border border-purple-500/40 bg-purple-500/15 hover:bg-purple-500/25 text-purple-200 font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0"
           >
-            <ShieldCheck className="w-3.5 h-3.5 text-[#00f5c4] shrink-0" />
-            <span className="hidden md:inline">Pass ALPHABETTE</span>
-            <span className="md:hidden">Pass</span>
+            <Sparkles className="w-3.5 h-3.5 text-purple-300 shrink-0" />
+            <span className="hidden md:inline">Tarifs & Bouquet</span>
+            <span className="md:hidden">Tarifs</span>
             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-400/20 text-purple-300 font-bold border border-purple-400/30">
-              15€/an
+              39€ / 199€
             </span>
           </button>
 
@@ -2956,47 +3018,87 @@ export default function AIDebate() {
         )}
       </main>
 
-      {/* ── FOOTER DISCRET DES ORATEURS IA (Ultra-compact & épuré) ── */}
-      {tab === "debate" && (
-        <footer className="border-t border-white/[0.06] bg-[#070709]/95 px-2 py-1 z-20 flex items-center justify-center gap-1.5 sm:gap-2.5 flex-wrap">
-          {AGENTS.map((agent) => {
-            const isActive = activeAgentsFlags[agent.id];
-            const isLoading = loadingAgent === agent.id;
-            return (
-              <div 
-                key={agent.id} 
-                title={`${agent.name} (${isActive ? 'Actif' : 'En retrait'})`}
-                className={`flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all ${
-                  isLoading 
-                    ? "border-current bg-white/[0.08]" 
-                    : isActive 
-                    ? "border-white/[0.08] bg-white/[0.02]" 
-                    : "border-transparent opacity-30"
-                }`}
-                style={{ color: agent.color }}
-              >
-                <span className="text-[10px] font-bold leading-none">{agent.symbol}</span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">
-                  {agent.name}
-                </span>
-                {isLoading && (
-                  <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ backgroundColor: agent.color }} />
-                )}
-              </div>
-            );
-          })}
+      {/* ── PIED DE PAGE PERMANENT & OBLIGATOIRE DE LA SUITE ALPHABETTE ── */}
+      <footer className="border-t border-white/[0.08] bg-[#070709]/95 px-3 py-1.5 z-20 flex items-center justify-between gap-2 flex-wrap">
+        
+        {/* Côté gauche : Orateurs IA en mode débat ou info d'archives */}
+        {tab === "debate" ? (
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+            {AGENTS.map((agent) => {
+              const isActive = activeAgentsFlags[agent.id];
+              const isLoading = loadingAgent === agent.id;
+              return (
+                <div 
+                  key={agent.id} 
+                  title={`${agent.name} (${isActive ? 'Actif' : 'En retrait'})`}
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded-full border transition-all ${
+                    isLoading 
+                      ? "border-current bg-white/[0.08]" 
+                      : isActive 
+                      ? "border-white/[0.08] bg-white/[0.02]" 
+                      : "border-transparent opacity-30"
+                  }`}
+                  style={{ color: agent.color }}
+                >
+                  <span className="text-[10px] font-bold leading-none">{agent.symbol}</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-300">
+                    {agent.name}
+                  </span>
+                  {isLoading && (
+                    <span className="w-1.5 h-1.5 rounded-full animate-ping" style={{ backgroundColor: agent.color }} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="text-[10px] text-gray-400 font-mono flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-purple-400" />
+            <span>Archives historiques du Tribunal d'IADébat</span>
+          </div>
+        )}
 
+        {/* Côté droit : Lien obligatoire vers http://alphabette.fr + Gestion Compte & Tarifs */}
+        <div className="flex items-center gap-2 sm:gap-3 ml-auto flex-wrap">
+          
+          {/* LIEN PIED DE PAGE OBLIGATOIRE DU HUB OFFICIEL */}
+          <a
+            href={ALPHABETTE_HUB_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] sm:text-[11px] text-gray-400 hover:text-[#00f5c4] font-semibold flex items-center gap-1.5 transition-colors group"
+            title="Hub central de l'écosystème souverain Alphabette"
+          >
+            <span className="group-hover:underline">{ALPHABETTE_FOOTER_TEXT}</span>
+            <ExternalLink className="w-3 h-3 text-[#00f5c4] shrink-0" />
+          </a>
+
+          {/* Bouton Compte Souverain */}
+          <button
+            onClick={() => setIsAccountModalOpen(true)}
+            className="text-[10px] text-gray-300 hover:text-emerald-400 flex items-center gap-1.5 font-mono transition-colors px-2 py-0.5 rounded bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 cursor-pointer"
+            title="Gérer mon Compte ALPHABETTE Unique"
+          >
+            <ShieldCheck className="w-3 h-3 text-emerald-400" />
+            <span>
+              {alphabetteAccount 
+                ? `${alphabetteAccount.name.split(" ")[0]} (${alphabetteAccount.isTrialActive ? `Essai ${getTrialDaysRemaining(alphabetteAccount)}j` : `${alphabetteAccount.priceAnnualEur || 39}€`})` 
+                : "Compte 7j offerts"}
+            </span>
+          </button>
+
+          {/* Bouton Tarifs & Bouquet */}
           <button
             onClick={() => setIsSubscriptionModalOpen(true)}
-            className="text-[10px] text-gray-400 hover:text-[#00f5c4] flex items-center gap-1.5 font-mono transition-colors ml-auto px-2 py-0.5 rounded hover:bg-white/[0.04] cursor-pointer"
-            title="ALPHABETTE SASU · Solutions logicielles souveraines (La Grande-Motte)"
+            className="text-[10px] text-gray-300 hover:text-[#00f5c4] flex items-center gap-1.5 font-mono transition-colors px-2 py-0.5 rounded bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-200 cursor-pointer"
+            title="Grille Tarifaire Officielle : 39€/59€ pour une application, 99€/199€ pour le Bouquet complet"
           >
-            <ShieldCheck className="w-3 h-3 text-[#00f5c4]" />
-            <span className="hidden lg:inline">ALPHABETTE SASU · Pass 40€/an · IADébat 15€/an</span>
-            <span className="lg:hidden">ALPHABETTE · 15€/an</span>
+            <Sparkles className="w-3 h-3 text-purple-400" />
+            <span className="hidden sm:inline">Tarifs (39€ / 199€)</span>
+            <span className="sm:hidden">Tarifs</span>
           </button>
-        </footer>
-      )}
+        </div>
+      </footer>
 
       {/* ── MODALS RÉVOLUTIONNAIRES ────────────────────────────────────── */}
       <DuelArenaModal
@@ -3085,6 +3187,17 @@ export default function AIDebate() {
       <SubscriptionModal
         isOpen={isSubscriptionModalOpen}
         onClose={() => setIsSubscriptionModalOpen(false)}
+        onAccountCreated={(newAcc) => setAlphabetteAccount(newAcc)}
+        onOpenAccountModal={() => setIsAccountModalOpen(true)}
+      />
+
+      {/* MODAL COMPTE UNIQUE ALPHABETTE & PROMPT GLOBAL */}
+      <AlphabetteAccountModal
+        isOpen={isAccountModalOpen}
+        onClose={() => setIsAccountModalOpen(false)}
+        currentAccount={alphabetteAccount}
+        onAccountChange={(acc) => setAlphabetteAccount(acc)}
+        onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
       />
     </div>
   );

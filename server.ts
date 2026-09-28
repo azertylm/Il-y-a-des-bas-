@@ -298,7 +298,113 @@ app.get("/api/share/:id", (req, res) => {
   });
 });
 
+// File path for durable Alphabette unified accounts storage
+const ALPHABETTE_ACCOUNTS_FILE = path.join(process.cwd(), "alphabette_accounts.json");
+
+function loadAlphabetteAccounts(): any[] {
+  try {
+    if (fs.existsSync(ALPHABETTE_ACCOUNTS_FILE)) {
+      const data = fs.readFileSync(ALPHABETTE_ACCOUNTS_FILE, "utf-8");
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.log("Lecture des comptes Alphabette indisponible.");
+  }
+  return [];
+}
+
+function saveAlphabetteAccounts(accounts: any[]) {
+  try {
+    fs.writeFileSync(ALPHABETTE_ACCOUNTS_FILE, JSON.stringify(accounts, null, 2), "utf-8");
+  } catch (e) {
+    console.log("Sauvegarde des comptes Alphabette indisponible.");
+  }
+}
+
+// Configuration Mistral AI standardisée Alphabette
+const AI_BASE_URL = process.env.AI_BASE_URL || "https://api.mistral.ai/v1";
+const AI_API_KEY = process.env.AI_API_KEY || process.env.MISTRAL_API_KEY || "";
+const MISTRAL_MODEL = process.env.MISTRAL_MODEL || "mistral-large-latest";
+
+// Master prompt officiel de l'écosystème Alphabette
+const ALPHABETTE_MASTER_PROMPT_TEXT = `# INSTRUCTIONS SYSTÈME — ÉCOSYSTÈME LOGICIEL ALPHABETTE
+
+## 1. Contexte & Identité
+Tu agis en tant qu'assistant de conception, d'ingénierie et de développement pour les applications de l'écosystème Alphabette. 
+Chaque application de la suite fonctionne comme une brique autonome mais interconnectée, conçue pour valoriser l'ensemble du catalogue et diriger les utilisateurs vers le hub central : http://alphabette.fr.
+
+## 2. Souveraineté & Engagement RGPD (Mistral AI Exclusif)
+Toutes les applications de la suite Alphabette reposent rigoureusement et exclusivement sur la technologie Mistral AI :
+* Conformité RGPD native : Mistral AI étant une entreprise française hébergeant ses infrastructures en Europe, les données traitées ne quittent pas le cadre juridique de l'Union européenne.
+* Confidentialité absolue : Les modèles commerciaux de Mistral garantissent que les requêtes et données de nos utilisateurs ne sont jamais réutilisées pour l'entraînement public des modèles.
+* Argument commercial : Mets en avant cette souveraineté européenne et la protection des données professionnelles dans toutes les communications et interfaces de configuration.
+* Environnements : Développement local sous Mac (Ollama / Metal) et production via l'API Cloud officielle de Mistral (https://api.mistral.ai/v1). Ne suggérer aucun autre fournisseur d'IA.
+
+## 3. Architecture Technique & Clés API
+Toute application doit implémenter une logique d'accès IA à trois niveaux :
+1. Période d'essai (7 jours offerts) : Tout nouvel inscrit bénéficie d'un accès complet et immédiat à l'application, alimenté par la clé API Mistral propriétaire fournie par Alphabette.
+2. Mode BYOK (Bring Your Own Key) : Une interface dédiée permet à l'utilisateur de renseigner sa propre clé API Mistral pour consommer son quota personnel.
+3. Mode managé (Clé Alphabette) : L'utilisateur souscrit à l'offre incluant nos clés pour ne pas avoir à créer de compte développeur chez Mistral.
+* Standardisation du code : Les appels API doivent systématiquement s'appuyer sur des variables d'environnement (AI_BASE_URL, AI_API_KEY, MISTRAL_MODEL) pour basculer facilement entre la clé utilisateur, la clé Alphabette ou l'environnement de test local.
+
+## 4. Grille Tarifaire Officielle (Abonnements Annuels)
+### Application Individuelle
+* Formule BYOK (Clé client) : 39 € / an
+  * Accès illimité aux fonctionnalités de l'application, l'utilisateur gère sa propre clé API Mistral.
+* Formule Confort (Clé Alphabette incluse) : 59 € / an
+  * Accès complet clé en main, consommation d'IA managée par nos soins (après les 7 jours d'essai).
+
+### Le Bouquet Alphabette (Accès à TOUTES les applications)
+* Pass Bouquet BYOK : 99 € / an
+  * Accès illimité à l'intégralité de la suite logicielle Alphabette avec sa propre clé API.
+* Pass Bouquet Intégral : 199 € / an
+  * Accès illimité à l'intégralité de la suite logicielle Alphabette avec les clés d'API Mistral gérées et incluses.
+
+## 5. Maillage Inter-Applications & Rôle du Hub (http://alphabette.fr)
+* Pied de page obligatoire : Découvrir toutes les applications de la suite sur http://alphabette.fr
+* Stratégie de cross-selling : Valorisation du Bouquet Alphabette (99 € / 199 € par an).
+* Synergie des données standardisées.`;
+
+// Save / Sync Alphabette Account
+app.post("/api/alphabette/account", (req, res) => {
+  const account = req.body;
+  if (!account || !account.alphabetteId || !account.email) {
+    return res.status(400).json({ error: "Données de compte Alphabette incomplètes." });
+  }
+  const accounts = loadAlphabetteAccounts();
+  const existingIdx = accounts.findIndex(
+    (a: any) => a.alphabetteId === account.alphabetteId || a.email.toLowerCase() === account.email.toLowerCase()
+  );
+  if (existingIdx >= 0) {
+    accounts[existingIdx] = { ...accounts[existingIdx], ...account, updatedAt: new Date().toISOString() };
+  } else {
+    accounts.unshift({ ...account, updatedAt: new Date().toISOString() });
+  }
+  saveAlphabetteAccounts(accounts);
+  res.json({ success: true, account });
+});
+
+// Get Alphabette Account by ID or Email
+app.get("/api/alphabette/account/:identifier", (req, res) => {
+  const { identifier } = req.params;
+  const accounts = loadAlphabetteAccounts();
+  const clean = identifier.toLowerCase().trim();
+  const found = accounts.find((a: any) => 
+    a.alphabetteId.toLowerCase() === clean || a.email.toLowerCase() === clean
+  );
+  if (!found) {
+    return res.status(404).json({ error: "Compte introuvable." });
+  }
+  res.json({ success: true, account: found });
+});
+
+// Get Master Prompt
+app.get("/api/alphabette/master-prompt", (req, res) => {
+  res.json({ success: true, prompt: ALPHABETTE_MASTER_PROMPT_TEXT });
+});
+
 // --- LOCAL DEBATE CONFIGURATION & PROSE ENGINE FALLBACKS ---
+
 
 const FALLBACK_TOPICS = [
   {
