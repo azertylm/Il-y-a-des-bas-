@@ -70,6 +70,8 @@ import { ShareDebateModal } from "./components/ShareDebateModal";
 import { ApiKeysAndModelsModal } from "./components/ApiKeysAndModelsModal";
 import { SubscriptionModal } from "./components/SubscriptionModal";
 import { AlphabetteAccountModal } from "./components/AlphabetteAccountModal";
+import { AlphabetteTopNav } from "./components/AlphabetteTopNav";
+import { QuotaExceededModal } from "./components/QuotaExceededModal";
 import { Message, Topic, Archive, Verdict, Agent, AlphabetteAccount } from "./types";
 import { 
   loadAlphabetteAccount, 
@@ -78,6 +80,7 @@ import {
   ALPHABETTE_HUB_URL,
   ALPHABETTE_FOOTER_TEXT
 } from "./utils/alphabetteAuth";
+import { checkAndUpdateQuota, QuotaStatus } from "./utils/alphabetteQuota";
 
 // ─── THÈMES TEMPORELS PAR DÉFAUT ─────────────────────────────────────────────
 const DEFAULT_TOPICS: Topic[] = [
@@ -254,6 +257,23 @@ export default function AIDebate() {
   const [isSubscriptionModalOpen, setIsSubscriptionModalOpen] = useState(false);
   const [alphabetteAccount, setAlphabetteAccount] = useState<AlphabetteAccount | null>(() => loadAlphabetteAccount());
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [isQuotaExceededModalOpen, setIsQuotaExceededModalOpen] = useState(false);
+  const [quotaStatus, setQuotaStatus] = useState<QuotaStatus>({
+    dailyCount: 0,
+    maxDaily: 20,
+    isTrial: true,
+    trialDaysLeft: 7,
+    isSubscribed: false,
+    isByokActive: false,
+    quotaExhausted: false,
+    todayKey: ""
+  });
+
+  useEffect(() => {
+    checkAndUpdateQuota(alphabetteAccount, false).then(status => {
+      setQuotaStatus(status);
+    });
+  }, [alphabetteAccount]);
 
   // Synchronisation inter-applications ALPHABETTE (BroadcastChannel & storage)
   useEffect(() => {
@@ -1176,6 +1196,14 @@ export default function AIDebate() {
       }
 
       try {
+        const quotaRes = await checkAndUpdateQuota(alphabetteAccount, true);
+        setQuotaStatus(quotaRes);
+        if (quotaRes.quotaExhausted) {
+          setIsQuotaExceededModalOpen(true);
+          setIsRunning(false);
+          return;
+        }
+
         const res = await fetch("/api/debate/generate", {
           method: "POST",
           headers: getHeaders(),
@@ -1399,6 +1427,13 @@ export default function AIDebate() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#050505] text-[#f3f4f6] font-sans relative">
+      <AlphabetteTopNav
+        account={alphabetteAccount}
+        quotaInfo={quotaStatus}
+        onOpenAccount={() => setIsAccountModalOpen(true)}
+        onOpenApiKeys={() => setIsApiKeysModalOpen(true)}
+        onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
+      />
       
       {/* Visual background enhancements */}
       <div className="fixed inset-0 pointer-events-none z-0" style={{ backgroundImage: "linear-gradient(rgba(255,255,255,0.01) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.01) 1px, transparent 1px)", backgroundSize: "60px 60px", animation: "breathe 10s infinite" }} />
@@ -3198,6 +3233,17 @@ export default function AIDebate() {
         currentAccount={alphabetteAccount}
         onAccountChange={(acc) => setAlphabetteAccount(acc)}
         onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
+      />
+
+      {/* MODAL QUOTA QUOTIDIEN ÉPUISÉ */}
+      <QuotaExceededModal
+        isOpen={isQuotaExceededModalOpen}
+        onClose={() => setIsQuotaExceededModalOpen(false)}
+        onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
+        onOpenApiKeys={() => setIsApiKeysModalOpen(true)}
+        dailyCount={quotaStatus.dailyCount}
+        maxDaily={quotaStatus.maxDaily}
+        isTrial={quotaStatus.isTrial}
       />
     </div>
   );
