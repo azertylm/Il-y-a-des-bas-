@@ -1200,7 +1200,7 @@ export default function AIDebate() {
         setQuotaStatus(quotaRes);
         if (quotaRes.quotaExhausted) {
           setIsQuotaExceededModalOpen(true);
-          setIsRunning(false);
+          setPhase("paused");
           return;
         }
 
