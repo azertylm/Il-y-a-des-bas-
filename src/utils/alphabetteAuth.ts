@@ -109,7 +109,7 @@ export const ALPHABETTE_APPS = [
   {
     id: "futures_apps",
     name: "Futures Applications du Bouquet",
-    desc: "Toute nouvelle solution logicielle souveraine éditée par ALPHABETTE SASU incluse d'office dans le Bouquet.",
+    desc: "Toute nouvelle solution logicielle souveraine éditée par ALPHABETTE incluse d'office dans le Bouquet.",
     badge: "Écosystème Évolutif",
     icon: "Sparkles",
     active: true,
