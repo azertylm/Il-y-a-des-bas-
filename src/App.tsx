@@ -1492,7 +1492,7 @@ export default function AIDebate() {
         </div>
 
         {/* Boutons d'actions principaux */}
-        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 min-w-0">
           
           {/* BOUTON BIG : Écrit tout simplement "BIG" */}
           <button
@@ -1619,7 +1619,7 @@ export default function AIDebate() {
               }`}>
                 {alphabetteAccount.isTrialActive 
                   ? `Essai ${getTrialDaysRemaining(alphabetteAccount)}j`
-                  : `${alphabetteAccount.priceAnnualEur || 39}€/an`}
+                  : `${alphabetteAccount.priceAnnualEur || 15}€/an`}
               </span>
             </button>
           ) : (
@@ -1640,14 +1640,14 @@ export default function AIDebate() {
           {/* BOUTON GRILLE TARIFAIRE OFFICIELLE & BOUQUET */}
           <button
             onClick={() => setIsSubscriptionModalOpen(true)}
-            title="Grille Tarifaire Officielle Alphabette : Application Individuelle (39€/59€) ou Bouquet Alphabette (99€/199€)"
+            title="Tarifs Alphabette : 15 € par an pour IA Débat, 40 € par an pour toutes les applications"
             className="flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border border-purple-500/40 bg-purple-500/15 hover:bg-purple-500/25 text-purple-200 font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0"
           >
             <Sparkles className="w-3.5 h-3.5 text-purple-300 shrink-0" />
             <span className="hidden md:inline">Tarifs & Bouquet</span>
             <span className="md:hidden">Tarifs</span>
             <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-purple-400/20 text-purple-300 font-bold border border-purple-400/30">
-              39€ / 199€
+              15 € · 40 €
             </span>
           </button>
 
@@ -2186,7 +2186,7 @@ export default function AIDebate() {
               
               {/* ── BARRE DE VISIBILITÉ, CONTRÔLE PLEIN ÉCRAN & BOUTON BIG ─── */}
               <div className="p-1 px-1.5 bg-[#0a0a0d] border border-white/[0.08] rounded-lg flex flex-wrap items-center justify-between gap-1 shadow-sm shrink-0">
-                <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                   {/* BOUTON LANCER LE DÉBAT DIRECT (Visible dès le haut en phase idle) */}
                   {phase === "idle" && (
                     <button
@@ -2325,7 +2325,7 @@ export default function AIDebate() {
                 </div>
 
                 {/* Toggles des modules latéraux - Tous toujours visibles */}
-                <div className="flex flex-wrap items-center gap-1 shrink-0">
+                <div className="flex flex-wrap items-center gap-1 min-w-0">
                   <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mr-0.5 hidden sm:inline">
                     Modules :
                   </span>
@@ -3126,10 +3126,10 @@ export default function AIDebate() {
           <button
             onClick={() => setIsSubscriptionModalOpen(true)}
             className="text-[10px] text-gray-300 hover:text-[#00f5c4] flex items-center gap-1.5 font-mono transition-colors px-2 py-0.5 rounded bg-purple-500/10 hover:bg-purple-500/20 border border-purple-500/30 text-purple-200 cursor-pointer"
-            title="Grille Tarifaire Officielle : 39€/59€ pour une application, 99€/199€ pour le Bouquet complet"
+            title="Tarifs Alphabette : 15 € par an pour une application, 40 € par an pour toutes"
           >
             <Sparkles className="w-3 h-3 text-purple-400" />
-            <span className="hidden sm:inline">Tarifs (39€ / 199€)</span>
+            <span className="hidden sm:inline">Tarifs (15 € · 40 €)</span>
             <span className="sm:hidden">Tarifs</span>
           </button>
         </div>

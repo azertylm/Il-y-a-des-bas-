@@ -348,21 +348,13 @@ Toute application doit implémenter une logique d'accès IA à trois niveaux :
 * Standardisation du code : Les appels API doivent systématiquement s'appuyer sur des variables d'environnement (AI_BASE_URL, AI_API_KEY, MISTRAL_MODEL) pour basculer facilement entre la clé utilisateur, la clé Alphabette ou l'environnement de test local.
 
 ## 4. Grille Tarifaire Officielle (Abonnements Annuels)
-### Application Individuelle
-* Formule BYOK (Clé client) : 39 € / an
-  * Accès illimité aux fonctionnalités de l'application, l'utilisateur gère sa propre clé API Mistral.
-* Formule Confort (Clé Alphabette incluse) : 59 € / an
-  * Accès complet clé en main, consommation d'IA managée par nos soins (après les 7 jours d'essai).
-
-### Le Bouquet Alphabette (Accès à TOUTES les applications)
-* Pass Bouquet BYOK : 99 € / an
-  * Accès illimité à l'intégralité de la suite logicielle Alphabette avec sa propre clé API.
-* Pass Bouquet Intégral : 199 € / an
-  * Accès illimité à l'intégralité de la suite logicielle Alphabette avec les clés d'API Mistral gérées et incluses.
+* Une application : 15 € TTC / an (7 jours d'essai).
+* Toutes les applications Alphabette : 40 € TTC / an.
+* Le paiement en ligne n'est pas encore ouvert : aujourd'hui, l'application s'utilise librement. Ne jamais annoncer d'autre prix ni simuler un paiement.
 
 ## 5. Maillage Inter-Applications & Rôle du Hub (http://alphabette.fr)
 * Pied de page obligatoire : Découvrir toutes les applications de la suite sur http://alphabette.fr
-* Stratégie de cross-selling : Valorisation du Bouquet Alphabette (99 € / 199 € par an).
+* Stratégie de cross-selling : Rappeler le tarif « toutes les applications » (40 € par an).
 * Synergie des données standardisées.`;
 
 // Save / Sync Alphabette Account

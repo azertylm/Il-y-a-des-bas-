@@ -451,7 +451,7 @@ export function AlphabetteAccountModal({
                     <div className="text-xs text-purple-200 space-y-0.5">
                       <div className="font-bold flex items-center gap-1.5">
                         <Sparkles className="w-3.5 h-3.5 text-purple-300" />
-                        <span>Opportunité : Le Bouquet Alphabette Complet (99 € / 199 € par an)</span>
+                        <span>Toutes les applications Alphabette : 40 € par an (tarif prévu)</span>
                       </div>
                       <p className="text-gray-300 text-[11px]">
                         Débloquez l'accès illimité à <strong>toutes les applications de la suite</strong> (IADébat, Infos Perso, L'Œil de l'Atelier et futures créations).
@@ -898,7 +898,7 @@ export function AlphabetteAccountModal({
                     <span>Instructions Système — Écosystème Logiciel Alphabette</span>
                   </div>
                   <p className="text-xs text-gray-300 mt-1 leading-relaxed">
-                    Ce prompt global définit les standards de l'écosystème : exclusivité <strong>Mistral AI</strong>, conformité RGPD, 7 jours offerts, grille 39€/59€/99€/199€ et lien obligatoire vers le hub central <strong>http://alphabette.fr</strong>.
+                    Ce prompt global définit les standards de l'écosystème : exclusivité <strong>Mistral AI</strong>, conformité RGPD, 7 jours offerts, grille 15 € et 40 € par an et lien obligatoire vers le hub central <strong>http://alphabette.fr</strong>.
                   </p>
                 </div>
 
@@ -955,7 +955,7 @@ export function AlphabetteAccountModal({
                 }}
                 className="text-xs text-purple-300 hover:text-purple-200 hover:underline cursor-pointer mr-2"
               >
-                Voir la grille tarifaire (39€ / 59€ / 99€ / 199€)
+                Voir les tarifs (15 € · 40 € par an)
               </button>
             )}
             <button

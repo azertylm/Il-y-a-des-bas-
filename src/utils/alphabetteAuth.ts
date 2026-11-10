@@ -24,7 +24,7 @@ export const ALPHABETTE_PLANS: AlphabettePlanInfo[] = [
     mode: "byok",
     title: "Application Individuelle — BYOK",
     badge: "Clé Client",
-    priceAnnualEur: 39,
+    priceAnnualEur: 15,
     description: "Accès illimité aux fonctionnalités de l'application, l'utilisateur gère sa propre clé API Mistral.",
     features: [
       "Accès complet à IADébat pendant 1 an",
@@ -39,7 +39,7 @@ export const ALPHABETTE_PLANS: AlphabettePlanInfo[] = [
     mode: "confort",
     title: "Application Individuelle — Confort",
     badge: "Clé Alphabette Incluse",
-    priceAnnualEur: 59,
+    priceAnnualEur: 15,
     description: "Accès complet clé en main, consommation d'IA managée par nos soins (après les 7 jours d'essai).",
     features: [
       "Accès complet clé en main à IADébat",
@@ -54,7 +54,7 @@ export const ALPHABETTE_PLANS: AlphabettePlanInfo[] = [
     mode: "byok",
     title: "Pass Bouquet BYOK",
     badge: "Toute la Suite (Clé Client)",
-    priceAnnualEur: 99,
+    priceAnnualEur: 40,
     description: "Accès illimité à l'intégralité de la suite logicielle Alphabette avec sa propre clé API Mistral.",
     features: [
       "Accès illimité à IADébat, Infos Perso, L'Œil de l'Atelier",
@@ -69,7 +69,7 @@ export const ALPHABETTE_PLANS: AlphabettePlanInfo[] = [
     mode: "confort",
     title: "Pass Bouquet Intégral",
     badge: "Toute la Suite (Clés Incluses)",
-    priceAnnualEur: 199,
+    priceAnnualEur: 40,
     description: "Accès illimité à l'intégralité de la suite logicielle Alphabette avec les clés d'API Mistral gérées et incluses.",
     recommended: true,
     features: [
@@ -144,23 +144,15 @@ Toute application doit implémenter une logique d'accès IA à trois niveaux :
 ## 4. Grille Tarifaire Officielle (Abonnements Annuels)
 Toute interface de facturation, modale d'expiration ou page tarifaire doit présenter exactement cette grille :
 
-### Application Individuelle
-* **Formule BYOK (Clé client) :** 39 € / an
-  * Accès illimité aux fonctionnalités de l'application, l'utilisateur gère sa propre clé API Mistral.
-* **Formule Confort (Clé Alphabette incluse) :** 59 € / an
-  * Accès complet clé en main, consommation d'IA managée par nos soins (après les 7 jours d'essai).
-
-### Le Bouquet Alphabette (Accès à TOUTES les applications)
-* **Pass Bouquet BYOK :** 99 € / an
-  * Accès illimité à l'intégralité de la suite logicielle Alphabette avec sa propre clé API.
-* **Pass Bouquet Intégral :** 199 € / an
-  * Accès illimité à l'intégralité de la suite logicielle Alphabette avec les clés d'API Mistral gérées et incluses.
+* Une application : 15 € TTC / an (7 jours d'essai).
+* Toutes les applications Alphabette : 40 € TTC / an.
+* Le paiement en ligne n'est pas encore ouvert : aujourd'hui, l'application s'utilise librement. Ne jamais annoncer d'autre prix ni simuler un paiement.
 
 ## 5. Maillage Inter-Applications & Rôle du Hub (http://alphabette.fr)
 Chaque application a un rôle de vitrine et d'acquisition pour l'écosystème global :
 * **Pied de page obligatoire :** En bas de chaque page ou interface de chaque application, intègre systématiquement un lien clair et visible vers le hub central :
   \`Découvrir toutes les applications de la suite sur http://alphabette.fr\`
-* **Stratégie de cross-selling :** Lorsqu'un utilisateur atteint la fin de ses 7 jours d'essai ou consulte l'écran d'abonnement pour une application (39 € ou 59 €), l'interface doit immédiatement valoriser l'opportunité économique du **Bouquet Alphabette** (99 € / 199 € par an pour débloquer l'ensemble des outils).
+* **Stratégie de cross-selling :** Lorsqu'un utilisateur atteint la fin de ses 7 jours d'essai ou consulte l'écran des tarifs d'une application (15 €), l'interface doit immédiatement valoriser l'opportunité économique du **Bouquet Alphabette** (99 € / 199 € par an pour débloquer l'ensemble des outils).
 * **Synergie des données :** Veille à ce que les modules et structures de données puissent dialoguer ou échanger des formats standardisés pour renforcer l'intérêt du Bouquet complet auprès des clients.`;
 
 /**
@@ -268,27 +260,27 @@ export function createAlphabetteAccount(
   let isTrialActive = true;
 
   if (plan === "individual_byok") {
-    planTitle = "Application Individuelle — BYOK (39 € / an)";
+    planTitle = "IA Débat (15 € / an)";
     priceAnnualEur = 39;
     status = "active";
     isTrialActive = false;
   } else if (plan === "individual_confort") {
-    planTitle = "Application Individuelle — Confort (59 € / an)";
+    planTitle = "IA Débat (15 € / an)";
     priceAnnualEur = 59;
     status = "active";
     isTrialActive = false;
   } else if (plan === "bouquet_byok") {
-    planTitle = "Pass Bouquet BYOK (99 € / an)";
+    planTitle = "Toutes les applications Alphabette (40 € / an)";
     priceAnnualEur = 99;
     status = "active";
     isTrialActive = false;
   } else if (plan === "bouquet_integral") {
-    planTitle = "Pass Bouquet Intégral (199 € / an)";
+    planTitle = "Toutes les applications Alphabette (40 € / an)";
     priceAnnualEur = 199;
     status = "active";
     isTrialActive = false;
   } else if (plan === "pass_alphabette") {
-    planTitle = "Pass Bouquet BYOK (99 € / an)";
+    planTitle = "Toutes les applications Alphabette (40 € / an)";
     priceAnnualEur = 99;
     status = "active";
     isTrialActive = false;

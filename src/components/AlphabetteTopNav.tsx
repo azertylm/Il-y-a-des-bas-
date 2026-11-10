@@ -35,7 +35,7 @@ export function AlphabetteTopNav({
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   return (
-    <header className="w-full bg-[#07090e]/90 backdrop-blur-md border-b border-white/10 px-4 py-2.5 flex items-center justify-between z-40 sticky top-0 text-white select-none">
+    <header className="w-full bg-[#07090e]/90 backdrop-blur-md border-b border-white/10 px-2 sm:px-4 py-2.5 flex flex-wrap items-center justify-between gap-2 z-40 sticky top-0 text-white select-none">
       
       {/* Left: Brand & App Selector Dropdown */}
       <div className="flex items-center gap-3">
@@ -110,7 +110,7 @@ export function AlphabetteTopNav({
       </div>
 
       {/* Right: Quota badge, API Keys & Account Buttons */}
-      <div className="flex items-center gap-2.5">
+      <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">
         
         {/* Quota Badge */}
         <button
