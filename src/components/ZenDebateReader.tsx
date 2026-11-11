@@ -466,6 +466,13 @@ export function ZenDebateReader({
 
             {/* Corps du texte - Optimisé pour une lecture intégrale sans défilement */}
             <div className="flex-1 overflow-y-auto my-2 py-1 pr-1 scrollbar-thin select-text flex flex-col justify-center">
+              {currentMsg.ecritPar && (
+                <p className={`mb-1 text-[10px] font-mono ${currentMsg.relais ? "text-amber-300" : "text-gray-500"}`}>
+                  {currentMsg.relais
+                    ? `écrit par ${currentMsg.ecritPar}, à la manière de ${currentMsg.agentName}`
+                    : `écrit par ${currentMsg.ecritPar}`}
+                </p>
+              )}
               <p className={`font-sans whitespace-pre-wrap ${contentFontClass}`}>
                 {currentMsg.content}
               </p>

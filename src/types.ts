@@ -11,6 +11,10 @@ export interface Message {
   time: string;
   isUser?: boolean;
   claps?: number;
+  /** Le modèle qui a réellement écrit la réplique (ex. « Gemini · gemini-2.5-flash »). */
+  ecritPar?: string;
+  /** Vrai si la réplique a été écrite par une autre IA que celle affichée (relais faute de clé). */
+  relais?: boolean;
 }
 
 export interface Topic {

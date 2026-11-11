@@ -10,13 +10,13 @@ interface LiveAudienceVoteProps {
 
 export function LiveAudienceVote({ activeAgents, onCheerAll, onHide }: LiveAudienceVoteProps) {
   const [votes, setVotes] = useState<{ [key: string]: number }>({
-    chatgpt: 18,
-    claude: 24,
-    gemini: 15,
-    deepseek: 22,
-    mistral: 14,
-    grok: 19,
-    user: 12,
+    chatgpt: 0,
+    claude: 0,
+    gemini: 0,
+    deepseek: 0,
+    mistral: 0,
+    grok: 0,
+    user: 0,
   });
 
   const [hasVotedFor, setHasVotedFor] = useState<string | null>(null);
@@ -58,12 +58,12 @@ export function LiveAudienceVote({ activeAgents, onCheerAll, onHide }: LiveAudie
           </div>
           <div>
             <h4 className="font-condensed font-bold text-xs uppercase tracking-wider text-white flex items-center gap-1.5">
-              Vote du Public en Direct
+              Ton vote (sur cet appareil)
               <span className="text-[9px] font-mono text-emerald-400 bg-emerald-500/10 px-1 rounded">
                 LIVE
               </span>
             </h4>
-            <div className="text-[10px] text-gray-400 font-mono">{totalVotes} suffrages exprimés</div>
+            <div className="text-[10px] text-gray-400 font-mono">{totalVotes === 0 ? "aucun vote" : `${totalVotes} vote${totalVotes > 1 ? "s" : ""} sur cet appareil`}</div>
           </div>
         </div>
 

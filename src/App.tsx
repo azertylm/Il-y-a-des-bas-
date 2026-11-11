@@ -1224,6 +1224,12 @@ export default function AIDebate() {
 
         const data = await res.json();
         const text = data.text;
+        // Honnêteté : quelle IA a vraiment écrit cette réplique ?
+        const NOMS_FOURNISSEURS: Record<string, string> = { openai: "ChatGPT", anthropic: "Claude", claude: "Claude", gemini: "Gemini", deepseek: "DeepSeek", mistral: "Mistral", grok: "Grok" };
+        const fournisseur = String(data.provider || "");
+        const idFournisseur = fournisseur === "openai" ? "chatgpt" : fournisseur === "anthropic" ? "claude" : fournisseur;
+        const ecritPar = fournisseur ? `${NOMS_FOURNISSEURS[fournisseur] ?? fournisseur}${data.modelUsed ? ` · ${data.modelUsed}` : ""}` : undefined;
+        const relais = Boolean(fournisseur) && idFournisseur !== agent.id;
 
         const msg: Message = {
           id: `${agent.id}-${Date.now()}`,
@@ -1237,6 +1243,8 @@ export default function AIDebate() {
           content: text,
           time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
           claps: 0,
+          ecritPar,
+          relais,
         };
 
         setMessages(prev => {
@@ -2023,7 +2031,7 @@ export default function AIDebate() {
                 {showApiKeys && (
                   <div className="flex flex-col gap-3.5 mt-1 animate-fadeSlideUp">
                     <p className="text-[10px] text-gray-400 leading-normal">
-                      Renseignez vos clés API personnelles. En leur absence, le relais haute fidélité Gemini prend automatiquement le relais pour chaque orateur.
+                      Renseignez vos clés API personnelles. En leur absence, c’est Gemini qui écrit à la place de chaque orateur, en imitant son style : chaque réplique l’indique.
                     </p>
                     
                     {[
@@ -2779,7 +2787,7 @@ export default function AIDebate() {
               {/* BARRE D'ENTRÉE PARTICIPATION DE L'UTILISATEUR HUMAIN */}
               {!isClosed && (
                 <div className="border-t border-white/[0.06] py-0.5 flex items-center gap-1 shrink-0 bg-[#050505] z-10">
-                  <form onSubmit={handlePostUserContribution} className="flex-1 flex gap-1.5 items-center">
+                  <form onSubmit={handlePostUserContribution} className="flex-1 min-w-0 flex gap-1.5 items-center">
                     <div className="w-6 h-6 rounded-full bg-blue-500/10 border border-blue-500/25 flex items-center justify-center text-[11px] shrink-0 select-none">
                       👤
                     </div>
@@ -2788,7 +2796,7 @@ export default function AIDebate() {
                       placeholder="Participez au débat avec vos arguments (Entrée pour envoyer)..."
                       value={userContribution}
                       onChange={e => setUserContribution(e.target.value)}
-                      className="flex-1 bg-black border border-white/10 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-blue-500 placeholder-gray-500"
+                      className="flex-1 min-w-0 bg-black border border-white/10 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-blue-500 placeholder-gray-500"
                     />
                     <button 
                       type="submit"
@@ -3298,6 +3306,14 @@ function MessageBubble({
           <span className={`font-bold tracking-normal ${nameFontClass}`} style={{ color: msg.agentColor }}>
             {msg.agentName}
           </span>
+          {msg.ecritPar && (
+            <span
+              className={`text-[10px] font-mono ${msg.relais ? "text-amber-300" : "text-gray-500"}`}
+              title={msg.relais ? `Faute de clé ${msg.agentName}, cette réplique a été écrite par une autre IA qui imite son style.` : "IA qui a écrit cette réplique"}
+            >
+              {msg.relais ? `écrit par ${msg.ecritPar}, à la manière de ${msg.agentName}` : `écrit par ${msg.ecritPar}`}
+            </span>
+          )}
           <span className="text-[10px] text-gray-400 font-medium tracking-normal truncate">
             {msg.agentRole}
           </span>

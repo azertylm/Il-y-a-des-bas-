@@ -63,8 +63,9 @@ export function generateStandaloneHtmlDocument(
 
   // Construction des fiches d'interventions avec bouton de copie individuel
   const speechesHtml = messages.map((m, idx) => {
-    const rawSpeechText = `[#${idx + 1} ${m.agentName} - ${m.agentRole} (${m.time})]\n\n${m.content}`;
-    const escapedContent = formatContentToHtml(m.content);
+    const mention = m.ecritPar ? (m.relais ? `[écrit par ${m.ecritPar}, à la manière de ${m.agentName}]\n` : `[écrit par ${m.ecritPar}]\n`) : "";
+    const rawSpeechText = `[#${idx + 1} ${m.agentName} - ${m.agentRole} (${m.time})]\n\n${mention}${m.content}`;
+    const escapedContent = formatContentToHtml(mention + m.content);
     return `
       <article class="speech-card" data-agent="${escapeHtml(m.agentId)}" data-index="${idx + 1}" style="--agent-color: ${m.agentColor};">
         <header class="speech-header">
@@ -1053,7 +1054,7 @@ export function generateRichHtmlForClipboard(
         <strong style="color: ${m.agentColor}; font-size: 15px;">#${idx + 1} ${escapeHtml(m.agentName)}</strong>
         <span style="color: #64748b; font-size: 12px; margin-left: 8px;">(${escapeHtml(m.agentRole)} · ${escapeHtml(m.time)})</span>
       </div>
-      <div style="color: #1e293b; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml(m.content)}</div>
+      <div style="color: #1e293b; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml((m.ecritPar ? (m.relais ? `[écrit par ${m.ecritPar}, à la manière de ${m.agentName}] ` : `[écrit par ${m.ecritPar}] `) : "") + m.content)}</div>
     </div>
   `).join("");
 
