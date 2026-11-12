@@ -509,8 +509,7 @@ export default function AIDebate() {
   // Contrôle de la taille de police (Bouton BIG pour agrandir la typographie à l'écran)
   const [fontSizeLevel, setFontSizeLevel] = useState<"normal" | "large" | "xlarge">(() => {
     try {
-      const saved = localStorage.getItem("debate_font_size");
-      if (saved === "large" || saved === "xlarge") return saved;
+      // La taille d'affichage est désormais réglée par le bouton BIG de la double barre Alphabette.
       return "normal";
     } catch {
       return "normal";
@@ -1502,23 +1501,6 @@ export default function AIDebate() {
         {/* Boutons d'actions principaux */}
         <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2 min-w-0">
           
-          {/* BOUTON BIG : Écrit tout simplement "BIG" */}
-          <button
-            onClick={handleCycleFontSize}
-            title="Agrandir la taille de police (BIG)"
-            className={`flex items-center justify-center gap-1 px-2.5 py-1 rounded-lg border font-black text-xs uppercase cursor-pointer transition-all shadow-sm shrink-0 ${
-              fontSizeLevel !== "normal"
-                ? "bg-purple-600/40 text-purple-200 border-purple-400 ring-2 ring-purple-400/40"
-                : "bg-white/[0.06] hover:bg-white/[0.12] text-gray-200 hover:text-white border-white/20"
-            }`}
-          >
-            <Type className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-            <span className="font-black tracking-wider text-xs">BIG</span>
-            {fontSizeLevel !== "normal" && (
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0 animate-pulse" />
-            )}
-          </button>
-
           {/* BOUTON TOUT MASQUER / TOUT OUVRIR (desktop) */}
           <button
             onClick={() => {
@@ -2227,23 +2209,6 @@ export default function AIDebate() {
                       <span>Tout Masquer</span>
                     </button>
                   )}
-
-                  {/* BOUTON BIG : Agrandir la taille de police */}
-                  <button
-                    onClick={handleCycleFontSize}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-black uppercase tracking-wider border cursor-pointer transition-all flex items-center gap-1.5 shadow-sm ${
-                      fontSizeLevel !== "normal"
-                        ? "bg-purple-600/35 text-purple-200 border-purple-400 ring-2 ring-purple-400/40"
-                        : "bg-white/[0.06] hover:bg-white/[0.12] text-gray-200 hover:text-white border-white/20"
-                    }`}
-                    title="Agrandir la taille de police (BIG)"
-                  >
-                    <Type className="w-3.5 h-3.5 text-purple-400" />
-                    <span className="font-black text-xs">BIG</span>
-                    {fontSizeLevel !== "normal" && (
-                      <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-                    )}
-                  </button>
 
                   {/* BOUTON VITESSE ULTRA-RAPIDE */}
                   <button
