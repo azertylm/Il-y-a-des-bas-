@@ -1460,7 +1460,7 @@ export default function AIDebate() {
     <div className="min-h-screen flex flex-col bg-[#050505] text-[#f3f4f6] font-sans relative">
       <AlphabetteTopNav
         account={alphabetteAccount}
-        quotaInfo={quotaStatus}
+        quotaInfo={{ ...quotaStatus, isMembre: quotaStatus.isMembre || Boolean(membreAlphabette) }}
         onOpenAccount={() => setIsAccountModalOpen(true)}
         onOpenApiKeys={() => setIsApiKeysModalOpen(true)}
         onOpenSubscription={() => setIsSubscriptionModalOpen(true)}

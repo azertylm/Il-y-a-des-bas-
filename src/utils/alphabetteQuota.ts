@@ -46,6 +46,10 @@ export async function checkAndUpdateQuota(
   consume: boolean = false
 ): Promise<QuotaStatus> {
   const today = getTodayString();
+  // Membre inscrit avec un code d'invitation : accès offert, pas de quota à compter (réponse immédiate, sans Firebase).
+  if (lireMembre()) {
+    return { dailyCount: 0, maxDaily: 999999, isTrial: false, trialDaysLeft: 0, isSubscribed: true, isByokActive: true, isMembre: true, quotaExhausted: false, todayKey: today };
+  }
   const user = await getOrCreateFirebaseUser();
   const userId = user ? user.uid : (alphabetteAccount?.alphabetteId || "anon_local");
 
