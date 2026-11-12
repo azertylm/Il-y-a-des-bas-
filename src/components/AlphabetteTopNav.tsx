@@ -19,7 +19,7 @@ import { ALPHABETTE_APPS, ALPHABETTE_HUB_URL } from "../utils/alphabetteAuth";
 
 interface AlphabetteTopNavProps {
   account: AlphabetteAccount | null;
-  quotaInfo: { dailyCount: number; maxDaily: number; isTrial: boolean; isByokActive: boolean };
+  quotaInfo: { dailyCount: number; maxDaily: number; isTrial: boolean; isByokActive: boolean; isMembre?: boolean };
   onOpenAccount: () => void;
   onOpenApiKeys: () => void;
   onOpenSubscription: () => void;
@@ -48,7 +48,7 @@ export function AlphabetteTopNav({
           <Zap className="w-3.5 h-3.5 text-[#ff7733]" />
           <span className="text-white/70">Quota :</span>
           <span className="font-mono font-bold text-white">
-            {quotaInfo.isByokActive ? "Illimité (BYOK)" : `${quotaInfo.dailyCount} / ${quotaInfo.maxDaily}`}
+            {quotaInfo.isMembre ? "Illimité (membre)" : quotaInfo.isByokActive ? "Illimité (clé perso)" : `${quotaInfo.dailyCount} / ${quotaInfo.maxDaily}`}
           </span>
         </button>
 
@@ -62,14 +62,14 @@ export function AlphabetteTopNav({
           <span className="hidden md:inline">Clés API</span>
         </button>
 
-        {/* Subscription / Pass Button */}
-        <button
+        {/* Subscription / Pass Button (masqué pour un membre inscrit : l'accès lui est offert) */}
+        {!quotaInfo.isMembre && <button
           onClick={onOpenSubscription}
           className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#ff5400] to-[#ff7733] hover:brightness-110 transition-all text-xs font-bold text-white shadow-md shadow-[#ff5400]/20"
         >
           <Sparkles className="w-3.5 h-3.5 text-white" />
           <span>S'abonner</span>
-        </button>
+        </button>}
 
         {/* Account / Profile Button */}
         <button

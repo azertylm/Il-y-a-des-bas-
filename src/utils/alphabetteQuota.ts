@@ -2,6 +2,7 @@ import { initializeApp, getApps } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged, User } from "firebase/auth";
 import { getFirestore, doc, getDoc, setDoc, updateDoc, increment } from "firebase/firestore";
 import firebaseConfig from "../../firebase-applet-config.json";
+import { lireMembre } from "./membreAlphabette";
 
 // Initialize Firebase
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
@@ -15,6 +16,8 @@ export interface QuotaStatus {
   trialDaysLeft: number;
   isSubscribed: boolean;
   isByokActive: boolean;
+  /** Inscrit avec un code d'invitation alphabette : accès offert. */
+  isMembre: boolean;
   quotaExhausted: boolean;
   todayKey: string;
 }
@@ -54,7 +57,8 @@ export async function checkAndUpdateQuota(
   const isTrial = diffDays < 7;
   const trialDaysLeft = Math.max(0, 7 - diffDays);
 
-  const isSubscribed = alphabetteAccount?.status === "active" && alphabetteAccount?.plan && alphabetteAccount.plan !== "trial_7d";
+  const isMembre = Boolean(lireMembre());
+  const isSubscribed = isMembre || (alphabetteAccount?.status === "active" && alphabetteAccount?.plan && alphabetteAccount.plan !== "trial_7d");
   const hasByokKey = Boolean(alphabetteAccount?.mistralApiKey || localStorage.getItem("ALPHABETTE_BYOK_KEY"));
   const isByokActive = isSubscribed || hasByokKey;
 
@@ -101,8 +105,9 @@ export async function checkAndUpdateQuota(
     maxDaily,
     isTrial,
     trialDaysLeft,
-    isSubscribed,
+    isSubscribed: Boolean(isSubscribed),
     isByokActive,
+    isMembre,
     quotaExhausted: !isByokActive && dailyCount > maxDaily,
     todayKey: today
   };

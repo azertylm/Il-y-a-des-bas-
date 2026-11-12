@@ -81,6 +81,7 @@ import {
   ALPHABETTE_FOOTER_TEXT
 } from "./utils/alphabetteAuth";
 import { checkAndUpdateQuota, QuotaStatus } from "./utils/alphabetteQuota";
+import { lireMembre } from "./utils/membreAlphabette";
 
 // ─── THÈMES TEMPORELS PAR DÉFAUT ─────────────────────────────────────────────
 const DEFAULT_TOPICS: Topic[] = [
@@ -258,6 +259,17 @@ export default function AIDebate() {
   const [alphabetteAccount, setAlphabetteAccount] = useState<AlphabetteAccount | null>(() => loadAlphabetteAccount());
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
   const [isQuotaExceededModalOpen, setIsQuotaExceededModalOpen] = useState(false);
+  // Inscription gratuite par code d'invitation (cookie partagé par tous les sites alphabette.fr).
+  const [membreAlphabette, setMembreAlphabette] = useState(() => lireMembre());
+  useEffect(() => {
+    const relire = () => setMembreAlphabette(lireMembre());
+    window.addEventListener("alphabette:membre", relire);
+    window.addEventListener("focus", relire);
+    return () => {
+      window.removeEventListener("alphabette:membre", relire);
+      window.removeEventListener("focus", relire);
+    };
+  }, []);
   const [quotaStatus, setQuotaStatus] = useState<QuotaStatus>({
     dailyCount: 0,
     maxDaily: 20,
@@ -265,6 +277,7 @@ export default function AIDebate() {
     trialDaysLeft: 7,
     isSubscribed: false,
     isByokActive: false,
+    isMembre: false,
     quotaExhausted: false,
     todayKey: ""
   });
@@ -1623,6 +1636,16 @@ export default function AIDebate() {
                   : `${alphabetteAccount.priceAnnualEur || 15}€/an`}
               </span>
             </button>
+          ) : membreAlphabette ? (
+            <a
+              href="https://alphabette.fr/inscription/"
+              title="Inscrit(e) avec un code d'invitation : l'accès vous est offert"
+              className="flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 font-bold text-xs tracking-wider cursor-pointer transition-all shadow-sm shrink-0"
+            >
+              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
+              <span className="font-mono">{membreAlphabette.prenom}</span>
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded font-bold border bg-emerald-400/20 text-emerald-300 border-emerald-400/30">Accès offert</span>
+            </a>
           ) : (
             <button
               onClick={() => setIsAccountModalOpen(true)}
@@ -3101,8 +3124,8 @@ export default function AIDebate() {
             <ShieldCheck className="w-3 h-3 text-emerald-400" />
             <span>
               {alphabetteAccount 
-                ? `${alphabetteAccount.name.split(" ")[0]} (${alphabetteAccount.isTrialActive ? `Essai ${getTrialDaysRemaining(alphabetteAccount)}j` : `${alphabetteAccount.priceAnnualEur || 39}€`})` 
-                : "Compte 7j offerts"}
+                ? `${alphabetteAccount.name.split(" ")[0]} (${alphabetteAccount.isTrialActive ? `Essai ${getTrialDaysRemaining(alphabetteAccount)}j` : `${alphabetteAccount.priceAnnualEur || 15}€`})` 
+                : membreAlphabette ? `${membreAlphabette.prenom} (accès offert)` : "Compte 7j offerts"}
             </span>
           </button>
 
