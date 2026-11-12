@@ -692,7 +692,7 @@ app.post("/api/debate/test-key", async (req, res) => {
     const cleanKey = key.trim();
 
     if (provider === "chatgpt") {
-      const modelToUse = model || "gpt-4o-mini";
+      const modelToUse = model || "gpt-6-luna";
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         signal: AbortSignal.timeout(6000),
@@ -702,7 +702,7 @@ app.post("/api/debate/test-key", async (req, res) => {
         },
         body: JSON.stringify({
           model: modelToUse,
-          max_tokens: 15,
+          max_completion_tokens: 300,
           messages: [{ role: "user", content: "Réponds simplement 'Test réussi'." }]
         })
       });
@@ -718,7 +718,7 @@ app.post("/api/debate/test-key", async (req, res) => {
     }
 
     if (provider === "claude") {
-      const modelToUse = model || "claude-3-5-haiku-20241022";
+      const modelToUse = model || "claude-haiku-5-5";
       const response = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         signal: AbortSignal.timeout(6000),
@@ -729,14 +729,14 @@ app.post("/api/debate/test-key", async (req, res) => {
         },
         body: JSON.stringify({
           model: modelToUse,
-          max_tokens: 15,
+          max_tokens: 300,
           messages: [{ role: "user", content: "Réponds simplement 'Test réussi'." }]
         })
       });
       const latency = Date.now() - startTime;
       if (response.ok) {
         const data = await response.json();
-        const reply = data?.content?.[0]?.text?.trim() || "OK";
+        const reply = (Array.isArray(data?.content) ? data.content.find((b: any) => b?.type === "text")?.text : "")?.trim() || "OK";
         return res.json({ success: true, provider, modelUsed: modelToUse, latencyMs: latency, reply });
       } else {
         const errText = await response.text();
@@ -808,7 +808,7 @@ app.post("/api/debate/test-key", async (req, res) => {
     }
 
     if (provider === "grok") {
-      const modelToUse = model || "grok-2-1212";
+      const modelToUse = model || "grok-4.3";
       const response = await fetch("https://api.x.ai/v1/chat/completions", {
         method: "POST",
         signal: AbortSignal.timeout(6000),
@@ -869,23 +869,23 @@ Consignes de liberté, de rapidité et d'impact :
     if (resolvedAgentId === "chatgpt") {
       const openAIKey = req.headers["x-openai-api-key"];
       if (openAIKey) {
-        const chosenModel = (req.headers["x-openai-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "gpt-4o-mini";
+        const chosenModel = (req.headers["x-openai-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "gpt-6-luna";
         try {
           const response = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
-            signal: AbortSignal.timeout(3500),
+            signal: AbortSignal.timeout(12000),
             headers: {
               "Content-Type": "application/json",
               "Authorization": `Bearer ${openAIKey}`
             },
             body: JSON.stringify({
               model: chosenModel,
-              max_tokens: 250,
+              // Les modèles OpenAI récents refusent max_tokens et une température réglée.
+              max_completion_tokens: 1500,
               messages: [
                 { role: "system", content: systemPrompt },
                 { role: "user", content: prompt }
-              ],
-              temperature: 0.85
+              ]
             })
           });
           if (response.ok) {
@@ -908,11 +908,11 @@ Consignes de liberté, de rapidité et d'impact :
     if (resolvedAgentId === "claude") {
       const anthropicKey = req.headers["x-anthropic-api-key"] || req.headers["x-api-key"];
       if (anthropicKey) {
-        const chosenModel = (req.headers["x-anthropic-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "claude-3-5-haiku-20241022";
+        const chosenModel = (req.headers["x-anthropic-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "claude-haiku-5-5";
         try {
           const response = await fetch("https://api.anthropic.com/v1/messages", {
             method: "POST",
-            signal: AbortSignal.timeout(3500),
+            signal: AbortSignal.timeout(12000),
             headers: {
               "Content-Type": "application/json",
               "x-api-key": String(anthropicKey),
@@ -920,18 +920,19 @@ Consignes de liberté, de rapidité et d'impact :
             },
             body: JSON.stringify({
               model: chosenModel,
-              max_tokens: 250,
+              // Les modèles Claude récents réfléchissent avant d'écrire : marge suffisante, température par défaut.
+              max_tokens: 1500,
               system: systemPrompt,
               messages: [
                 { role: "user", content: prompt }
-              ],
-              temperature: 0.85
+              ]
             })
           });
           if (response.ok) {
             const data = await response.json();
-            if (data?.content?.[0]?.text) {
-              return res.json({ text: data.content[0].text, provider: "anthropic", modelUsed: chosenModel });
+            const blocTexte = Array.isArray(data?.content) ? data.content.find((b: any) => b?.type === "text" && b.text) : null;
+            if (blocTexte?.text) {
+              return res.json({ text: blocTexte.text, provider: "anthropic", modelUsed: chosenModel });
             }
           } else {
             const errorText = await response.text();
@@ -1026,11 +1027,11 @@ Consignes de liberté, de rapidité et d'impact :
     if (resolvedAgentId === "grok") {
       const grokKey = req.headers["x-grok-api-key"];
       if (grokKey) {
-        const chosenModel = (req.headers["x-grok-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "grok-2-1212";
+        const chosenModel = (req.headers["x-grok-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "grok-4.3";
         try {
           const response = await fetch("https://api.x.ai/v1/chat/completions", {
             method: "POST",
-            signal: AbortSignal.timeout(3500),
+            signal: AbortSignal.timeout(12000),
             headers: {
               "Content-Type": "application/json",
               "Authorization": `Bearer ${grokKey}`
@@ -1133,19 +1134,18 @@ A la toute fin de ton texte, ajoute un saut de ligne puis ajoute une phrase uniq
     try {
       const response = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
-        signal: AbortSignal.timeout(4500),
+        signal: AbortSignal.timeout(12000),
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${openAIKey}`
         },
         body: JSON.stringify({
-          model: "gpt-4o-mini",
+          model: "gpt-6-luna",
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: prompt }
           ],
-          temperature: 0.75,
-          max_tokens: 800
+          max_completion_tokens: 2000
         })
       });
 

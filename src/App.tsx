@@ -357,22 +357,33 @@ export default function AIDebate() {
   const [apiModels, setApiModels] = useState<{ [key: string]: string }>(() => {
     try {
       const saved = localStorage.getItem("debate_api_models");
-      return saved ? JSON.parse(saved) : {
-        chatgpt: "gpt-4o-mini",
-        claude: "claude-3-5-haiku-20241022",
+      if (saved) {
+        // Modèles retirés par leurs fournisseurs : remplacés par leur successeur actuel.
+        const retires: { [ancien: string]: string } = {
+          "gpt-4o-mini": "gpt-6-luna", "gpt-4o": "gpt-6.1-sol", "gpt-4.5-preview": "gpt-6.1-sol", "o3-mini": "gpt-6.1-sol",
+          "claude-3-5-haiku-20241022": "claude-haiku-5-5", "claude-3-7-sonnet-latest": "claude-sonnet-5-5", "claude-3-5-sonnet-20241022": "claude-sonnet-5-5",
+          "grok-2-1212": "grok-4.3", "grok-beta": "grok-4.3", "gemini-2.5-pro": "gemini-3.8-flash",
+        };
+        const lus = JSON.parse(saved) as { [key: string]: string };
+        for (const k of Object.keys(lus)) if (retires[lus[k]]) lus[k] = retires[lus[k]];
+        return lus;
+      }
+      return {
+        chatgpt: "gpt-6-luna",
+        claude: "claude-haiku-5-5",
         gemini: "gemini-3.1-flash-lite",
         deepseek: "deepseek-chat",
         mistral: "mistral-large-latest",
-        grok: "grok-2-1212"
+        grok: "grok-4.3"
       };
     } catch {
       return {
-        chatgpt: "gpt-4o-mini",
-        claude: "claude-3-5-haiku-20241022",
+        chatgpt: "gpt-6-luna",
+        claude: "claude-haiku-5-5",
         gemini: "gemini-3.1-flash-lite",
         deepseek: "deepseek-chat",
         mistral: "mistral-large-latest",
-        grok: "grok-2-1212"
+        grok: "grok-4.3"
       };
     }
   });

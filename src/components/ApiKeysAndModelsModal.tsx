@@ -46,12 +46,11 @@ export const PROVIDERS_CONFIG: ApiProviderConfig[] = [
     keyLink: "https://platform.openai.com/api-keys",
     docsLink: "https://platform.openai.com/docs/models",
     placeholder: "sk-proj-...",
-    defaultModel: "gpt-4o-mini",
+    defaultModel: "gpt-6-luna",
     recommendedModels: [
-      { id: "gpt-4o-mini", label: "GPT-4o Mini (Rapide, économique & vif)", tag: "Par défaut" },
-      { id: "gpt-4o", label: "GPT-4o (Modèle omni de référence)", tag: "Élite" },
-      { id: "gpt-4.5-preview", label: "GPT-4.5 Preview (Raisonnement profond)", tag: "Nouvelle génération" },
-      { id: "o3-mini", label: "o3-mini (Raisonnement logique & mathématique)", tag: "Nouveau" },
+      { id: "gpt-6-luna", label: "GPT-6 Luna (rapide, le moins cher)", tag: "Par défaut" },
+      { id: "gpt-6.1-sol", label: "GPT-6.1 Sol (équilibre qualité / prix)", tag: "Équilibré" },
+      { id: "gpt-6-astra", label: "GPT-6 Astra (le plus puissant, le plus cher)", tag: "Haut de gamme" },
     ]
   },
   {
@@ -62,13 +61,13 @@ export const PROVIDERS_CONFIG: ApiProviderConfig[] = [
     color: "#d97706",
     symbol: "⌓",
     keyLink: "https://console.anthropic.com/settings/keys",
-    docsLink: "https://docs.anthropic.com/en/docs/about-claude/models",
+    docsLink: "https://platform.claude.com/docs/en/models/overview",
     placeholder: "sk-ant-...",
-    defaultModel: "claude-3-5-haiku-20241022",
+    defaultModel: "claude-haiku-5-5",
     recommendedModels: [
-      { id: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku (Ultra-rapide & littéraire)", tag: "Par défaut" },
-      { id: "claude-3-7-sonnet-latest", label: "Claude 3.7 Sonnet (Raisonnement hybride de pointe)", tag: "Dernier cri" },
-      { id: "claude-3-5-sonnet-20241022", label: "Claude 3.5 Sonnet v2 (Nuance philosophique)", tag: "Élite" },
+      { id: "claude-haiku-5-5", label: "Claude Haiku 5.5 (le plus rapide, le moins cher)", tag: "Par défaut" },
+      { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5 (équilibre vitesse / qualité)", tag: "Équilibré" },
+      { id: "claude-opus-5-5", label: "Claude Opus 5.5 (le plus puissant, plus cher)", tag: "Haut de gamme" },
     ]
   },
   {
@@ -86,7 +85,6 @@ export const PROVIDERS_CONFIG: ApiProviderConfig[] = [
       { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite (Temps réel éclair)", tag: "Par défaut" },
       { id: "gemini-flash-latest", label: "Gemini Flash Latest (Dernière version automatique)", tag: "Évolutif" },
       { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash (Vision prospective & puissance)", tag: "Haute capacité" },
-      { id: "gemini-2.5-pro", label: "Gemini 2.5 Pro (Compréhension multimodale profonde)", tag: "Raisonnement" },
     ]
   },
   {
@@ -132,10 +130,10 @@ export const PROVIDERS_CONFIG: ApiProviderConfig[] = [
     keyLink: "https://console.x.ai/",
     docsLink: "https://docs.x.ai/docs/models",
     placeholder: "xai-...",
-    defaultModel: "grok-2-1212",
+    defaultModel: "grok-4.3",
     recommendedModels: [
-      { id: "grok-2-1212", label: "Grok 2 (Incisif, direct & sans langue de bois)", tag: "Par défaut" },
-      { id: "grok-beta", label: "Grok Beta (Dernières innovations xAI)", tag: "Avant-première" },
+      { id: "grok-4.3", label: "Grok 4.3 (le moins cher)", tag: "Par défaut" },
+      { id: "grok-4.7", label: "Grok 4.7 (le plus récent, plus cher)", tag: "Haut de gamme" },
     ]
   }
 ];
@@ -726,8 +724,7 @@ export function ApiKeysAndModelsModal({
                   <p className="text-gray-400 leading-relaxed pl-7">
                     Pour suggérer à vos collègues ou amis de mettre à jour leurs modèles :
                     <br />• <strong>Google AI Studio</strong> : La clé Gemini gratuite offre un quota généreux pour les débats.
-                    <br />• <strong>OpenAI</strong> : Passer de <em>gpt-4o-mini</em> à <em>gpt-4o</em> apporte une verve dialectique supérieure.
-                    <br />• <strong>Anthropic</strong> : <em>Claude 3.7 Sonnet</em> apporte une réflexion philosophique inégalée.
+                    <br />• <strong>OpenAI</strong> et <strong>Anthropic</strong> : les modèles « Équilibré » ou « Haut de gamme » écrivent mieux mais coûtent plus cher sur votre compte ; les prix sont sur le site de chaque fournisseur.
                   </p>
                 </div>
               </div>
