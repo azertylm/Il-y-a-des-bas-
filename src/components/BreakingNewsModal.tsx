@@ -7,6 +7,7 @@ interface BreakingNewsItem {
   headline: string;
   description: string;
   urgentQuestion: string;
+  ecritPar?: string;
 }
 
 interface BreakingNewsModalProps {
@@ -26,12 +27,14 @@ export function BreakingNewsModal({
 }: BreakingNewsModalProps) {
   const [items, setItems] = useState<BreakingNewsItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
   const [customHeadline, setCustomHeadline] = useState("");
   const [customDescription, setCustomDescription] = useState("");
   const [customQuestion, setCustomQuestion] = useState("");
 
   const handleFetchTwists = async () => {
     setLoading(true);
+    setErreur(null);
     try {
       const res = await fetch("/api/debate/breaking-news", {
         method: "POST",
@@ -40,10 +43,15 @@ export function BreakingNewsModal({
       });
       if (res.ok) {
         const data = await res.json();
-        setItems(data);
+        setItems(Array.isArray(data) ? data : []);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setItems([]);
+        setErreur(err.error || "L'IA n'a pas pu proposer de coups de théâtre.");
       }
     } catch (e) {
       console.warn("Erreur lors de la génération des coups de théâtre:", e);
+      setErreur("L'IA n'a pas pu proposer de coups de théâtre.");
     } finally {
       setLoading(false);
     }
@@ -82,12 +90,12 @@ export function BreakingNewsModal({
             </div>
             <div>
               <h3 className="text-lg font-black font-condensed tracking-wider uppercase text-white flex items-center gap-2">
-                Injecter un Coup de Théâtre en Direct
+                Injecter un Coup de Théâtre
                 <span className="text-[10px] font-mono uppercase bg-red-500/20 text-red-300 px-2 py-0.5 rounded border border-red-500/30">
-                  BREAKING EVENT
+                  FICTION
                 </span>
               </h3>
-              <p className="text-xs text-gray-400">Bouleversez les certitudes et forcez les IA à s'adapter immédiatement</p>
+              <p className="text-xs text-gray-400">Scénarios imaginaires (pas de vraies actualités) pour relancer le débat</p>
             </div>
           </div>
 
@@ -106,7 +114,7 @@ export function BreakingNewsModal({
             <div className="flex items-center justify-between mb-2.5">
               <span className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
                 <Sparkles className="w-3.5 h-3.5 text-[#00f5c4]" />
-                Événements Imprévus Générés par l'IA
+                Scénarios imaginaires proposés par l'IA{items[0]?.ecritPar ? ` (${items[0].ecritPar})` : ""}
               </span>
               <button
                 onClick={handleFetchTwists}
@@ -120,8 +128,10 @@ export function BreakingNewsModal({
             {loading ? (
               <div className="p-8 text-center text-xs text-gray-400 flex flex-col items-center gap-2">
                 <Radio className="w-6 h-6 text-red-400 animate-spin" />
-                Simulation d'incidents critiques en cours...
+                L'IA imagine des scénarios...
               </div>
+            ) : erreur ? (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-xs text-red-200 leading-relaxed">{erreur}</div>
             ) : (
               <div className="grid grid-cols-1 gap-2.5">
                 {items.map((item, idx) => (

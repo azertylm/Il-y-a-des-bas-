@@ -42,6 +42,8 @@ export interface Verdict {
   agentBadges: { [key: string]: string };
   critiqueGénérale: string;
   keyCitation: string;
+  /** IA qui a vraiment rendu ce verdict (« Mistral · mistral-large-latest »). */
+  ecritPar?: string;
 }
 
 export interface Agent {

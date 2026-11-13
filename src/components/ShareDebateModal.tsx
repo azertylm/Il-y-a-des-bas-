@@ -32,6 +32,13 @@ import {
   getWinnerDisplayName 
 } from "../utils/debateHtmlExport";
 
+
+// Version hébergée sans serveur : un débat n'est gardé que dans ce navigateur.
+// Un lien ne peut donc pas l'ouvrir chez quelqu'un d'autre : on le dit, et on
+// propose d'envoyer le fichier HTML (qui contient tout le débat).
+const STATIQUE = (import.meta as any).env?.VITE_ALPHABETTE_STATIC === "1";
+const lienAppli = () => `${window.location.origin}${window.location.pathname}`;
+
 interface ShareDebateModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -92,6 +99,11 @@ export function ShareDebateModal({
     if (!isOpen) return;
 
     const generateShareLink = async () => {
+      if (STATIQUE) {
+        setShareId("");
+        setShareUrl(lienAppli());
+        return;
+      }
       setIsGeneratingLink(true);
       try {
         const payload = {
@@ -118,15 +130,11 @@ export function ShareDebateModal({
           const url = `${origin}/?share=${sid}`;
           setShareUrl(url);
         } else {
-          // Fallback : lien direct basé sur l'URL courante
-          const fallbackId = `debat-${Date.now().toString(36)}`;
-          setShareId(fallbackId);
-          setShareUrl(`${window.location.origin}/?share=${fallbackId}`);
+          // Pas de faux lien : sans partage enregistré, on renvoie vers l'appli.
+          setShareUrl(lienAppli());
         }
       } catch {
-        const fallbackId = `debat-${Date.now().toString(36)}`;
-        setShareId(fallbackId);
-        setShareUrl(`${window.location.origin}/?share=${fallbackId}`);
+        setShareUrl(lienAppli());
       } finally {
         setIsGeneratingLink(false);
       }
@@ -154,7 +162,7 @@ export function ShareDebateModal({
     text += `Nombre d'interventions : ${messages.length}\n\n`;
 
     if (verdict) {
-      text += `🏆 VERDICT DU JURY SUPRÊME :\n`;
+      text += `🏆 VERDICT (avis d'une IA${verdict.ecritPar ? ` : ${verdict.ecritPar}` : ""}) :\n`;
       text += `Vainqueur : ${winnerName}\n`;
       if (verdict.winnerReason) text += `Motif : ${verdict.winnerReason}\n`;
       if (verdict.keyCitation) text += `Citation clé : « ${verdict.keyCitation} »\n`;
@@ -165,7 +173,9 @@ export function ShareDebateModal({
       text += `📋 SYNTHÈSE DES ÉCHANGES :\n${summary}\n\n`;
     }
 
-    text += `🔗 Consulter le débat complet en ligne avec toutes les répliques des IA :\n${shareUrl || window.location.href}\n`;
+    text += STATIQUE
+      ? `🔗 IA Débat, débats entre IA avec vos propres clés : ${shareUrl || lienAppli()}\n(Le débat complet est dans le fichier HTML joint, s'il y en a un.)\n`
+      : `🔗 Consulter le débat complet en ligne avec toutes les répliques des IA :\n${shareUrl || window.location.href}\n`;
     return text;
   };
 
@@ -243,7 +253,7 @@ export function ShareDebateModal({
 
   // Copie du lien direct
   const handleCopyLink = async () => {
-    const urlToCopy = shareUrl || `${window.location.origin}/?share=${shareId}`;
+    const urlToCopy = shareUrl || lienAppli();
     try {
       await navigator.clipboard.writeText(urlToCopy);
       setCopiedLink(true);
@@ -292,14 +302,18 @@ export function ShareDebateModal({
 
   const handleShareWhatsApp = () => {
     const msg = encodeURIComponent(
-      `🏛️ *IADébat* : Grand débat entre IA sur « ${topic.title} »\n🏆 Vainqueur : ${winnerName}\n\n👉 Lis l'intégralité du débat et le verdict ici :\n${shareUrl || window.location.href}`
+      STATIQUE
+        ? `🏛️ *IA Débat* : débat entre IA sur « ${topic.title} »\n🏆 Vainqueur selon l'IA juge : ${winnerName}\n\n👉 Essaie IA Débat : ${shareUrl || lienAppli()}`
+        : `🏛️ *IADébat* : Grand débat entre IA sur « ${topic.title} »\n🏆 Vainqueur : ${winnerName}\n\n👉 Lis l'intégralité du débat et le verdict ici :\n${shareUrl || window.location.href}`
     );
     window.open(`https://api.whatsapp.com/send?text=${msg}`, "_blank");
   };
 
   const handleShareTwitter = () => {
     const text = encodeURIComponent(
-      `Confrontation dialectique passionnante entre les grandes IA sur « ${topic.title} » ! Découvre le verdict du jury et la synthèse ici :`
+      STATIQUE
+        ? `Débat entre IA sur « ${topic.title} ». Essaie IA Débat :`
+        : `Confrontation dialectique passionnante entre les grandes IA sur « ${topic.title} » ! Découvre le verdict du jury et la synthèse ici :`
     );
     const url = encodeURIComponent(shareUrl || window.location.href);
     window.open(`https://twitter.com/intent/tweet?text=${text}&url=${url}&hashtags=IADebat,IA,Philosophie`, "_blank");
@@ -314,7 +328,9 @@ export function ShareDebateModal({
     let md = `# ${topic.title}\n\n`;
     md += `> **Catégorie** : ${topic.category}  \n`;
     md += `> **Date de session** : ${new Date().toLocaleDateString("fr-FR")}  \n`;
-    md += `> **Lien permanent du débat** : ${shareUrl || window.location.href}\n\n`;
+    md += STATIQUE
+      ? `> **IA Débat** : ${shareUrl || lienAppli()}\n\n`
+      : `> **Lien permanent du débat** : ${shareUrl || window.location.href}\n\n`;
     md += `## Problématique\n\n${topic.description}\n\n`;
 
     if (verdict) {
@@ -628,7 +644,7 @@ export function ShareDebateModal({
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-bold uppercase tracking-wider text-[#00f5c4] flex items-center gap-1.5">
                     <Globe className="w-3.5 h-3.5" />
-                    <span>Lien permanent du débat partagé</span>
+                    <span>{STATIQUE ? "Lien vers IA Débat" : "Lien permanent du débat partagé"}</span>
                   </label>
                   {isGeneratingLink && (
                     <span className="text-[11px] text-gray-400 animate-pulse">Génération du lien sécurisé...</span>
@@ -665,7 +681,9 @@ export function ShareDebateModal({
                 </div>
 
                 <p className="text-[11px] text-gray-400 leading-relaxed">
-                  Toute personne ouvrant ce lien accèdera directement à la transcription interactive de ce débat, au verdict du jury et à la synthèse officielle.
+                  {STATIQUE
+                    ? "Ce débat est gardé dans ce navigateur seulement : le lien ouvre IA Débat, pas ce débat. Pour transmettre le débat lui-même, envoyez le fichier HTML (onglet « Fichier HTML »)."
+                    : "Toute personne ouvrant ce lien accèdera directement à la transcription interactive de ce débat, au verdict du jury et à la synthèse."}
                 </p>
               </div>
 

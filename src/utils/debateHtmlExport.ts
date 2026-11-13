@@ -67,16 +67,16 @@ export function generateStandaloneHtmlDocument(
     const rawSpeechText = `[#${idx + 1} ${m.agentName} - ${m.agentRole} (${m.time})]\n\n${mention}${m.content}`;
     const escapedContent = formatContentToHtml(mention + m.content);
     return `
-      <article class="speech-card" data-agent="${escapeHtml(m.agentId)}" data-index="${idx + 1}" style="--agent-color: ${m.agentColor};">
+      <article class="speech-card" data-agent="${escapeHtml(m.agentId)}" data-index="${idx + 1}" style="--agent-color: ${escapeHtml(m.agentColor || "")};">
         <header class="speech-header">
           <div class="speech-author">
-            <span class="speech-avatar" style="background: ${m.agentDim}; border-color: ${m.agentBorder}; color: ${m.agentColor};">
+            <span class="speech-avatar" style="background: ${escapeHtml(m.agentDim || "")}; border-color: ${escapeHtml(m.agentBorder || "")}; color: ${escapeHtml(m.agentColor || "")};">
               ${escapeHtml(m.agentSymbol || "◆")}
             </span>
             <div>
               <div class="speech-name-row">
                 <span class="speech-number">#${idx + 1}</span>
-                <strong class="speech-name" style="color: ${m.agentColor};">${escapeHtml(m.agentName)}</strong>
+                <strong class="speech-name" style="color: ${escapeHtml(m.agentColor || "")};">${escapeHtml(m.agentName)}</strong>
                 <span class="speech-badge">${escapeHtml(m.agentRole)}</span>
               </div>
               <div class="speech-meta">${escapeHtml(m.time)}</div>
@@ -112,7 +112,7 @@ export function generateStandaloneHtmlDocument(
         <tr class="${isWinner ? 'score-winner' : ''}">
           <td style="font-weight: bold; text-transform: uppercase;">${escapeHtml(agentKey)} ${isWinner ? '🏆' : ''}</td>
           <td>${escapeHtml(badge)}</td>
-          <td style="text-align: right; font-weight: bold; font-family: monospace;">${score}/100</td>
+          <td style="text-align: right; font-weight: bold; font-family: monospace;">${escapeHtml(String(score))}/10</td>
         </tr>
       `;
     }).join("");
@@ -719,7 +719,7 @@ export function generateStandaloneHtmlDocument(
 
       ${debateUrl ? `
       <!-- Bouton 5 : Lien interactif -->
-      <button type="button" class="btn-action" onclick="copyDebateUrl('${escapeHtml(debateUrl)}')" title="Copier le lien web de ce débat">
+      <button type="button" class="btn-action" onclick="copyDebateUrl(${escapeHtml(JSON.stringify(debateUrl))})" title="Copier le lien web de ce débat">
         <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"></path>
           <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"></path>
@@ -1049,9 +1049,9 @@ export function generateRichHtmlForClipboard(
   const formattedDate = new Date().toLocaleDateString("fr-FR");
 
   const speeches = messages.map((m, idx) => `
-    <div style="margin-bottom: 20px; padding: 14px 18px; border-radius: 8px; background-color: #f8fafc; border-left: 4px solid ${m.agentColor}; border: 1px solid #e2e8f0;">
+    <div style="margin-bottom: 20px; padding: 14px 18px; border-radius: 8px; background-color: #f8fafc; border-left: 4px solid ${escapeHtml(m.agentColor || "")}; border: 1px solid #e2e8f0;">
       <div style="margin-bottom: 6px; font-size: 13px;">
-        <strong style="color: ${m.agentColor}; font-size: 15px;">#${idx + 1} ${escapeHtml(m.agentName)}</strong>
+        <strong style="color: ${escapeHtml(m.agentColor || "")}; font-size: 15px;">#${idx + 1} ${escapeHtml(m.agentName)}</strong>
         <span style="color: #64748b; font-size: 12px; margin-left: 8px;">(${escapeHtml(m.agentRole)} · ${escapeHtml(m.time)})</span>
       </div>
       <div style="color: #1e293b; font-size: 14px; line-height: 1.6; white-space: pre-wrap;">${escapeHtml((m.ecritPar ? (m.relais ? `[écrit par ${m.ecritPar}, à la manière de ${m.agentName}] ` : `[écrit par ${m.ecritPar}] `) : "") + m.content)}</div>

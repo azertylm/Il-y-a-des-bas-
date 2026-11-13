@@ -2,8 +2,8 @@ import { AlphabetteAccount, AlphabettePlanType } from "../types";
 
 export const ALPHABETTE_STORAGE_KEY = "ALPHABETTE_UNIFIED_ACCOUNT_V1";
 export const ALPHABETTE_SYNC_CHANNEL = "alphabette_ecosystem_sync";
-export const ALPHABETTE_HUB_URL = "http://alphabette.fr";
-export const ALPHABETTE_FOOTER_TEXT = "Découvrir toutes les applications de la suite sur http://alphabette.fr";
+export const ALPHABETTE_HUB_URL = "https://alphabette.fr";
+export const ALPHABETTE_FOOTER_TEXT = "Découvrir toutes les applications sur alphabette.fr";
 
 export interface AlphabettePlanInfo {
   id: AlphabettePlanType;
@@ -85,7 +85,7 @@ export const ALPHABETTE_APPS = [
   {
     id: "iadebat",
     name: "IADébat",
-    desc: "Arène souveraine de confrontation dialectique et d'arbitrage éthique propulsée par Mistral AI.",
+    desc: "Débats entre IA (ChatGPT, Claude, Gemini, DeepSeek, Mistral, Grok) avec vos propres clés.",
     badge: "Débat & Vérité",
     icon: "MessageSquare",
     active: true,
@@ -93,7 +93,7 @@ export const ALPHABETTE_APPS = [
   {
     id: "infosperso",
     name: "Infos Perso",
-    desc: "Coffre-fort souverain et bouclier de protection et gestion des données personnelles et d'identité.",
+    desc: "Actualités personnalisées selon vos centres d'intérêt.",
     badge: "Protection & RGPD",
     icon: "Shield",
     active: true,
@@ -101,7 +101,7 @@ export const ALPHABETTE_APPS = [
   {
     id: "loeildelatelier",
     name: "L'Œil de l'Atelier",
-    desc: "Outil souverain de pilotage, supervision d'atelier, monitoring visuel et optimisation artisanale/industrielle.",
+    desc: "Outils pour les artistes et les galeries d'art.",
     badge: "Pilotage & Atelier",
     icon: "Eye",
     active: true,
@@ -109,7 +109,7 @@ export const ALPHABETTE_APPS = [
   {
     id: "futures_apps",
     name: "Futures Applications du Bouquet",
-    desc: "Toute nouvelle solution logicielle souveraine éditée par ALPHABETTE incluse d'office dans le Bouquet.",
+    desc: "Les autres applications sont sur alphabette.fr.",
     badge: "Écosystème Évolutif",
     icon: "Sparkles",
     active: true,
@@ -198,9 +198,15 @@ export function generateAlphabetteId(): string {
   return `ALP-${rand}-${time}`;
 }
 
+/** Copie du compte SANS la clé IA (une clé ne doit jamais sortir dans un texte ou un fichier partagé). */
+function compteSansCle(account: AlphabetteAccount): AlphabetteAccount {
+  const { mistralApiKey: _cle, ...reste } = account;
+  return { ...reste, exportCode: "" } as AlphabetteAccount;
+}
+
 export function exportAccountToKey(account: AlphabetteAccount): string {
   try {
-    const json = JSON.stringify(account);
+    const json = JSON.stringify(compteSansCle(account));
     const b64 = btoa(unescape(encodeURIComponent(json)));
     return `ALP-PASS-${b64}`;
   } catch {
@@ -316,7 +322,7 @@ export function createAlphabetteAccount(
     mistralModel: "mistral-large-latest",
   };
 
-  account.exportCode = exportAccountToKey(account);
+  account.exportCode = "";
   return account;
 }
 
@@ -361,7 +367,7 @@ export function clearAlphabetteAccount(): void {
 }
 
 export function downloadSovereignPassFile(account: AlphabetteAccount): void {
-  const content = JSON.stringify(account, null, 2);
+  const content = JSON.stringify(compteSansCle(account), null, 2);
   const blob = new Blob([content], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");

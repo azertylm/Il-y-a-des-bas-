@@ -2,20 +2,10 @@ import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, signInWithPopup, GoogleAuthProvider, onAuthStateChanged, User, signOut } from 'firebase/auth';
 import firebaseConfig from '../../firebase-applet-config.json';
 
+// Moindre privilège : l'appli ne voit que les fichiers qu'elle a elle-même créés
+// (dossier « IADÉBAT »), jamais le reste du Google Drive de la personne.
 export const SCOPES = [
-  'https://www.googleapis.com/auth/drive',
-  'https://www.googleapis.com/auth/drive.activity',
-  'https://www.googleapis.com/auth/drive.activity.readonly',
-  'https://www.googleapis.com/auth/drive.appdata',
-  'https://www.googleapis.com/auth/drive.apps.readonly',
   'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/drive.install',
-  'https://www.googleapis.com/auth/drive.meet.readonly',
-  'https://www.googleapis.com/auth/drive.metadata',
-  'https://www.googleapis.com/auth/drive.metadata.readonly',
-  'https://www.googleapis.com/auth/drive.photos.readonly',
-  'https://www.googleapis.com/auth/drive.readonly',
-  'https://www.googleapis.com/auth/drive.scripts',
 ];
 
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
@@ -51,7 +41,6 @@ export const googleSignIn = async (forceConsent: boolean = true): Promise<{ user
     });
     provider.setCustomParameters({
       prompt: forceConsent ? 'consent select_account' : 'select_account',
-      access_type: 'offline',
     });
 
     const result = await signInWithPopup(auth, provider);

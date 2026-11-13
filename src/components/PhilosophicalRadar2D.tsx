@@ -108,10 +108,10 @@ export function PhilosophicalRadar2D({ messages, activeAgentsFlags, onHide }: Ph
             <h4 className="font-condensed font-bold text-sm tracking-wider uppercase text-white flex items-center gap-2">
               Boussole Idéologique & Radar 2D
               <span className="text-[9px] font-mono uppercase bg-[#00f5c4]/10 text-[#00f5c4] px-1.5 py-0.2 rounded border border-[#00f5c4]/20">
-                TEMPS RÉEL
+                INDICATIF
               </span>
             </h4>
-            <p className="text-[11px] text-gray-400">Positionnement philosophique continu des modèles</p>
+            <p className="text-[11px] text-gray-400">Positions de départ choisies par l'appli, déplacées par quelques mots-clés des répliques : pas une analyse des IA</p>
           </div>
         </div>
 

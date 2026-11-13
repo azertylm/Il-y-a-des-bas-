@@ -1,14 +1,13 @@
-import { initializeApp, getApps } from "firebase/app";
-import { getAuth, signInAnonymously, onAuthStateChanged, User } from "firebase/auth";
-import { getFirestore, doc, getDoc, setDoc, updateDoc, increment } from "firebase/firestore";
-import firebaseConfig from "../../firebase-applet-config.json";
 import { lireMembre } from "./membreAlphabette";
 
-// Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-
+/**
+ * Compteur d'utilisation, gardé SUR CET APPAREIL uniquement.
+ *
+ * Données personnelles : plus de connexion Firebase anonyme ni de compteur
+ * envoyé à Google à chaque visite (rien n'était dit au visiteur et Alphabette
+ * ne fournit aucune clé IA à économiser). Avec sa propre clé IA, le visiteur
+ * paie lui-même son fournisseur : aucune limite n'est imposée.
+ */
 export interface QuotaStatus {
   dailyCount: number;
   maxDaily: number;
@@ -22,85 +21,61 @@ export interface QuotaStatus {
   todayKey: string;
 }
 
-export async function getOrCreateFirebaseUser(): Promise<User | null> {
-  if (auth.currentUser) return auth.currentUser;
-  try {
-    const cred = await signInAnonymously(auth);
-    return cred.user;
-  } catch (err) {
-    console.warn("Firebase Anonymous Auth warning:", err);
-    return null;
-  }
-}
-
 export function getTodayString(): string {
   const now = new Date();
   return now.toISOString().split("T")[0]; // YYYY-MM-DD
 }
 
 /**
- * Calcule le quota journalier et l'état d'essai pour l'utilisateur
+ * Calcule le quota journalier et l'état d'essai pour l'utilisateur.
+ * @param aDesClesIA le visiteur a enregistré au moins une clé IA personnelle.
  */
 export async function checkAndUpdateQuota(
   alphabetteAccount: any | null,
-  consume: boolean = false
+  consume: boolean = false,
+  aDesClesIA: boolean = false
 ): Promise<QuotaStatus> {
   const today = getTodayString();
-  // Membre inscrit avec un code d'invitation : accès offert, pas de quota à compter (réponse immédiate, sans Firebase).
+  // Membre inscrit avec un code d'invitation : accès offert, pas de quota à compter.
   if (lireMembre()) {
     return { dailyCount: 0, maxDaily: 999999, isTrial: false, trialDaysLeft: 0, isSubscribed: true, isByokActive: true, isMembre: true, quotaExhausted: false, todayKey: today };
   }
-  const user = await getOrCreateFirebaseUser();
-  const userId = user ? user.uid : (alphabetteAccount?.alphabetteId || "anon_local");
 
-  // Détermination de la date d'inscription (pour le calcul des 7 jours d'essai)
-  let createdAt = alphabetteAccount?.createdAt ? new Date(alphabetteAccount.createdAt) : new Date();
-  const now = new Date();
-  const diffTime = now.getTime() - createdAt.getTime();
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+  // Date d'inscription (pour le calcul des 7 jours d'essai)
+  const createdAt = alphabetteAccount?.createdAt ? new Date(alphabetteAccount.createdAt) : new Date();
+  const diffDays = Math.floor((Date.now() - createdAt.getTime()) / (1000 * 60 * 60 * 24));
   const isTrial = diffDays < 7;
   const trialDaysLeft = Math.max(0, 7 - diffDays);
 
-  const isMembre = Boolean(lireMembre());
-  const isSubscribed = isMembre || (alphabetteAccount?.status === "active" && alphabetteAccount?.plan && alphabetteAccount.plan !== "trial_7d");
-  const hasByokKey = Boolean(alphabetteAccount?.mistralApiKey || localStorage.getItem("ALPHABETTE_BYOK_KEY"));
-  const isByokActive = isSubscribed || hasByokKey;
-
-  // Max daily limit: 20 req/day in trial (days 1-7), 5 req/day post-trial if unsubscribed. Unlimited if subscribed or BYOK.
-  const maxDaily = isByokActive ? 999999 : (isTrial ? 20 : 5);
-
-  let dailyCount = 0;
-  const quotaDocRef = doc(db, "quotas", `${userId}_${today}`);
-
+  // Aucun paiement n'existe encore : un compte local ne vaut jamais abonnement.
+  const isSubscribed = false;
+  let hasByokKey = aDesClesIA || Boolean(alphabetteAccount?.mistralApiKey);
   try {
-    const snap = await getDoc(quotaDocRef);
-    if (snap.exists()) {
-      dailyCount = snap.data().count || 0;
-    } else {
-      if (!isByokActive) {
-        await setDoc(quotaDocRef, { userId, date: today, count: 0, updatedAt: new Date().toISOString() });
-      }
-    }
-  } catch (err) {
-    // Fallback LocalStorage if Firestore is offline
-    const localKey = `alpha_quota_${userId}_${today}`;
-    dailyCount = parseInt(localStorage.getItem(localKey) || "0", 10);
+    hasByokKey = hasByokKey || Boolean(localStorage.getItem("ALPHABETTE_BYOK_KEY"));
+  } catch {
+    /* stockage indisponible */
+  }
+  const isByokActive = hasByokKey;
+
+  // 20 demandes / jour pendant l'essai, 5 ensuite. Illimité avec sa propre clé.
+  const maxDaily = isByokActive ? 999999 : isTrial ? 20 : 5;
+
+  const localKey = `alpha_quota_local_${today}`;
+  let dailyCount = 0;
+  try {
+    dailyCount = parseInt(localStorage.getItem(localKey) || "0", 10) || 0;
+  } catch {
+    dailyCount = 0;
   }
 
   const quotaExhausted = !isByokActive && dailyCount >= maxDaily;
 
-  if (consume && !quotaExhausted) {
+  if (consume && !quotaExhausted && !isByokActive) {
     dailyCount += 1;
     try {
-      const snap = await getDoc(quotaDocRef);
-      if (snap.exists()) {
-        await updateDoc(quotaDocRef, { count: increment(1), updatedAt: new Date().toISOString() });
-      } else {
-        await setDoc(quotaDocRef, { userId, date: today, count: 1, updatedAt: new Date().toISOString() });
-      }
-    } catch (err) {
-      const localKey = `alpha_quota_${userId}_${today}`;
       localStorage.setItem(localKey, dailyCount.toString());
+    } catch {
+      /* stockage indisponible */
     }
   }
 
@@ -109,10 +84,10 @@ export async function checkAndUpdateQuota(
     maxDaily,
     isTrial,
     trialDaysLeft,
-    isSubscribed: Boolean(isSubscribed),
+    isSubscribed,
     isByokActive,
-    isMembre,
-    quotaExhausted: !isByokActive && dailyCount > maxDaily,
-    todayKey: today
+    isMembre: false,
+    quotaExhausted,
+    todayKey: today,
   };
 }

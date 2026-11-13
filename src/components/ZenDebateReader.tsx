@@ -498,7 +498,7 @@ export function ZenDebateReader({
           <div className="flex-1 overflow-y-auto p-3 sm:p-5 rounded-xl bg-[#0c0c10] border border-amber-500/20 text-gray-200">
             <div className="flex items-center gap-2 text-amber-400 font-bold uppercase tracking-wider text-xs mb-2">
               <Scale className="w-4 h-4" />
-              <span>Verdict et Décision du Grand Jury</span>
+              <span>Verdict du jury (avis {verdict.ecritPar ? `rendu par ${verdict.ecritPar}` : "d'une IA"})</span>
             </div>
             <h3 className="text-base sm:text-lg font-bold text-white mb-2">
               Vainqueur de la dialectique : <span className="text-amber-300">{verdict.winnerId.toUpperCase()}</span>

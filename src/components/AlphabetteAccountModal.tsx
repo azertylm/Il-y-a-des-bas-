@@ -234,16 +234,12 @@ export function AlphabetteAccountModal({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-base sm:text-lg font-bold text-white tracking-wide">
-                  Compte ALPHABETTE Unique
-                </span>
-                <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-[#ff5400]/20 text-[#ff7733] border border-[#ff5400]/40 font-bold flex items-center gap-1">
-                  <Cpu className="w-3 h-3" />
-                  Mistral AI Exclusif
+                  Mon compte IA Débat
                 </span>
               </div>
               <p className="text-xs text-gray-400 flex items-center gap-1.5 mt-0.5">
                 <MapPin className="w-3 h-3 text-[#00f5c4]" />
-                <span>Suite logicielle souveraine · Hub central : <a href={ALPHABETTE_HUB_URL} target="_blank" rel="noopener noreferrer" className="text-[#00f5c4] hover:underline font-semibold">alphabette.fr</a></span>
+                <span>Gardé sur cet appareil · Toutes les applications : <a href={ALPHABETTE_HUB_URL} target="_blank" rel="noopener noreferrer" className="text-[#00f5c4] hover:underline font-semibold">alphabette.fr</a></span>
               </p>
             </div>
           </div>
@@ -268,14 +264,7 @@ export function AlphabetteAccountModal({
               }`}
             >
               <User className="w-3.5 h-3.5" />
-              <span>Mon Passeport Souverain</span>
-              {isTrial ? (
-                <span className="px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 text-[10px] font-mono">
-                  Essai 7j
-                </span>
-              ) : (
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              )}
+              <span>Mon compte (cet appareil)</span>
             </button>
           )}
 
@@ -288,7 +277,7 @@ export function AlphabetteAccountModal({
             }`}
           >
             <Shield className="w-3.5 h-3.5" />
-            <span>{currentAccount ? "Modifier / Nouveau Compte" : "Créer mon Compte (7j Offerts)"}</span>
+            <span>S'inscrire (code d'invitation)</span>
           </button>
 
           {currentAccount && (
@@ -301,7 +290,7 @@ export function AlphabetteAccountModal({
               }`}
             >
               <Key className="w-3.5 h-3.5 text-amber-400" />
-              <span>Configuration Mistral AI (BYOK)</span>
+              <span>Ma clé Mistral</span>
             </button>
           )}
 
@@ -314,20 +303,9 @@ export function AlphabetteAccountModal({
             }`}
           >
             <RefreshCw className="w-3.5 h-3.5 text-purple-400" />
-            <span>Partage & Inter-Applications</span>
+            <span>Sauvegarder / importer</span>
           </button>
 
-          <button
-            onClick={() => setActiveTab("prompt")}
-            className={`px-3.5 py-2 font-bold transition-all border-b-2 flex items-center gap-2 whitespace-nowrap cursor-pointer ${
-              activeTab === "prompt"
-                ? "border-blue-400 text-blue-300"
-                : "border-transparent text-gray-400 hover:text-white"
-            }`}
-          >
-            <FileCode className="w-3.5 h-3.5 text-blue-400" />
-            <span>Master Prompt Alphabette</span>
-          </button>
         </div>
 
         {/* Modal Body */}
@@ -337,36 +315,16 @@ export function AlphabetteAccountModal({
           {activeTab === "profile" && currentAccount && (
             <div className="space-y-6">
               
-              {/* Alerte Période d'essai 7 jours */}
-              {isTrial && (
-                <div className="bg-gradient-to-r from-amber-950/50 via-orange-950/40 to-yellow-950/30 border border-amber-500/40 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-9 h-9 rounded-lg bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-amber-300 shrink-0">
-                      <Clock className="w-5 h-5" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-amber-200 uppercase tracking-wider flex items-center gap-2">
-                        <span>Période d'Essai Active · Clé Alphabette Incluse</span>
-                        <span className="font-mono text-xs px-2 py-0.2 rounded-full bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
-                          {trialDaysRemaining} jour(s) restant(s)
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-300 mt-0.5">
-                        Vous profitez de l'accès complet propulsé par la clé Mistral fournie par Alphabette. Choisissez votre formule pérenne dès maintenant pour pérenniser vos accès.
-                      </p>
-                    </div>
-                  </div>
-                  {onOpenSubscriptionModal && (
-                    <button
-                      onClick={() => onOpenSubscriptionModal("individual_confort")}
-                      className="px-4 py-2 rounded-lg bg-amber-400 hover:bg-amber-300 text-black font-bold text-xs uppercase tracking-wider shrink-0 cursor-pointer shadow-md transition-all flex items-center justify-center gap-1.5"
-                    >
-                      <Sparkles className="w-3.5 h-3.5" />
-                      <span>Choisir une Formule</span>
-                    </button>
-                  )}
-                </div>
-              )}
+              {/* Honnêteté : ce compte n'existe que sur cet appareil, aucun paiement n'est possible */}
+              <div className="bg-white/[0.04] border border-white/15 rounded-xl p-4 text-xs text-gray-300 leading-relaxed space-y-1">
+                <div className="font-bold text-white uppercase tracking-wider">Compte enregistré sur cet appareil</div>
+                <p>
+                  Ce compte est gardé dans ce navigateur seulement, pour IA Débat. Alphabette ne fournit pas de clé IA :
+                  les réponses utilisent vos propres clés (bouton « Clés API »). Le paiement en ligne n'est pas encore ouvert :
+                  rien n'a été payé ni activé. Pour l'inscription commune à toutes les applications :{" "}
+                  <a href="https://alphabette.fr/inscription/" className="text-[#00f5c4] underline">alphabette.fr/inscription</a>.
+                </p>
+              </div>
 
               {/* Carte de membre numérique ALPHABETTE */}
               <div className="relative overflow-hidden rounded-2xl p-5 sm:p-6 border border-purple-500/40 bg-gradient-to-br from-[#12162a] via-[#0d1020] to-[#1c122c] shadow-2xl">
@@ -385,7 +343,7 @@ export function AlphabetteAccountModal({
                             : "bg-emerald-500/20 text-emerald-300 border-emerald-500/30"
                         }`}>
                           <Check className="w-2.5 h-2.5" />
-                          {isTrial ? "Essai 7j" : "Abonnement Actif"}
+                          Compte local
                         </span>
                       </div>
                       <p className="text-xs text-gray-400 mt-0.5">{currentAccount.email}</p>
@@ -409,7 +367,7 @@ export function AlphabetteAccountModal({
                       {copiedId ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5 opacity-60" />}
                     </div>
                     <div className="text-[10px] text-gray-400 mt-0.5">
-                      Échéance : {new Date(currentAccount.expiresAt).toLocaleDateString("fr-FR")}
+                      Créé le : {new Date(currentAccount.createdAt).toLocaleDateString("fr-FR")}
                     </div>
                   </div>
                 </div>
@@ -418,14 +376,14 @@ export function AlphabetteAccountModal({
                 <div className="mt-4 pt-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="bg-black/40 border border-white/10 rounded-xl p-3.5">
                     <div className="text-[11px] uppercase tracking-wider text-gray-400 font-bold mb-1">
-                      Formule Actuelle
+                      Formule
                     </div>
                     <div className="text-base font-bold text-white flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-purple-400" />
-                      <span>{currentAccount.planTitle}</span>
+                      <span>Aucune (paiement pas encore ouvert)</span>
                     </div>
                     <div className="text-xs text-[#00f5c4] font-semibold mt-1">
-                      {currentAccount.priceAnnualEur > 0 ? `${currentAccount.priceAnnualEur} € / an` : "7 jours offerts"} · Sans prélèvement mensuel
+                      Tarifs prévus : 15 € / an pour IA Débat, 40 € / an pour toutes les applications
                     </div>
                   </div>
 
@@ -433,13 +391,13 @@ export function AlphabetteAccountModal({
                     <div>
                       <div className="text-[11px] uppercase tracking-wider text-gray-400 font-bold mb-1 flex items-center gap-1.5">
                         <Cpu className="w-3.5 h-3.5 text-[#ff7733]" />
-                        <span>Moteur IA & RGPD</span>
+                        <span>Intelligence artificielle</span>
                       </div>
                       <div className="text-xs text-gray-200">
-                        <strong>Mistral AI Exclusif</strong> · Souveraineté France/UE
+                        <strong>Vos propres clés</strong> (ChatGPT, Claude, Gemini, DeepSeek, Mistral, Grok)
                       </div>
                       <div className="text-[11px] text-gray-400 mt-0.5">
-                        {currentAccount.mistralApiKey ? "Mode BYOK (Clé client activée)" : "Mode Managé (Clé Alphabette)"}
+                        {currentAccount.mistralApiKey ? "Clé Mistral de ce compte : utilisée pour Mistral" : "Ajoutez vos clés avec le bouton « Clés API »"}
                       </div>
                     </div>
                   </div>
@@ -454,7 +412,7 @@ export function AlphabetteAccountModal({
                         <span>Toutes les applications Alphabette : 40 € par an (tarif prévu)</span>
                       </div>
                       <p className="text-gray-300 text-[11px]">
-                        Débloquez l'accès illimité à <strong>toutes les applications de la suite</strong> (IADébat, Infos Perso, L'Œil de l'Atelier et futures créations).
+                        Le paiement en ligne n'est pas encore ouvert.
                       </p>
                     </div>
                     {onOpenSubscriptionModal && (
@@ -463,67 +421,17 @@ export function AlphabetteAccountModal({
                         className="px-3.5 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-indigo-600 hover:from-purple-400 hover:to-indigo-500 text-white font-bold text-xs shrink-0 cursor-pointer shadow-md transition-all flex items-center justify-center gap-1.5"
                       >
                         <Sparkles className="w-3.5 h-3.5" />
-                        <span>Évoluer vers le Bouquet</span>
+                        <span>Voir les tarifs</span>
                       </button>
                     )}
                   </div>
                 )}
               </div>
 
-              {/* Bouquet d'applications ALPHABETTE et Statut d'accès */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <h4 className="text-xs font-bold uppercase tracking-wider text-gray-400 flex items-center gap-1.5">
-                    <Layers className="w-4 h-4 text-[#00f5c4]" />
-                    <span>Applications de la Suite Alphabette</span>
-                  </h4>
-                  <a 
-                    href={ALPHABETTE_HUB_URL} 
-                    target="_blank" 
-                    rel="noopener noreferrer" 
-                    className="text-[11px] text-[#00f5c4] hover:underline flex items-center gap-1 font-semibold"
-                  >
-                    <span>alphabette.fr</span>
-                    <ExternalLink className="w-3 h-3" />
-                  </a>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {ALPHABETTE_APPS.map((app) => {
-                    const isUnlocked = isBouquet || isTrial || (app.id === "iadebat");
-
-                    return (
-                      <div
-                        key={app.id}
-                        className={`rounded-xl p-3.5 border transition-all ${
-                          isUnlocked
-                            ? "bg-[#101422] border-emerald-500/40"
-                            : "bg-black/30 border-white/10 opacity-70"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-xs font-bold text-white flex items-center gap-2">
-                            {app.id === "iadebat" && <MessageSquare className="w-3.5 h-3.5 text-[#00f5c4]" />}
-                            {app.id === "infosperso" && <Shield className="w-3.5 h-3.5 text-blue-400" />}
-                            {app.id === "loeildelatelier" && <Eye className="w-3.5 h-3.5 text-amber-400" />}
-                            {app.id === "futures_apps" && <Sparkles className="w-3.5 h-3.5 text-purple-400" />}
-                            <span>{app.name}</span>
-                          </span>
-
-                          <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full font-bold ${
-                            isUnlocked
-                              ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                              : "bg-white/10 text-gray-400"
-                          }`}>
-                            {isUnlocked ? "Accès Inclus" : "Bouquet Requis"}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-gray-400 leading-relaxed">{app.desc}</p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              <p className="text-xs text-gray-400">
+                Toutes les applications Alphabette :{" "}
+                <a href={ALPHABETTE_HUB_URL} target="_blank" rel="noopener noreferrer" className="text-[#00f5c4] hover:underline font-semibold">alphabette.fr</a>
+              </p>
 
               {/* Actions de gestion & Clé de transfert */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-white/10">
@@ -534,7 +442,7 @@ export function AlphabetteAccountModal({
                     title="Copier la clé de transfert pour la coller dans une autre application"
                   >
                     {copiedKey ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Key className="w-3.5 h-3.5 text-[#00f5c4]" />}
-                    <span>{copiedKey ? "Clé copiée !" : "Copier ma Clé Souveraine"}</span>
+                    <span>{copiedKey ? "Copié !" : "Copier mon compte (texte)"}</span>
                   </button>
 
                   <button
@@ -543,7 +451,7 @@ export function AlphabetteAccountModal({
                     title="Télécharger le fichier passeport pour importer sur un autre appareil"
                   >
                     <Download className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Télécharger mon Passeport</span>
+                    <span>Télécharger mon compte (fichier)</span>
                   </button>
                 </div>
 
@@ -561,141 +469,34 @@ export function AlphabetteAccountModal({
 
           {/* TAB 2: CRÉER UN COMPTE / NOUVEL ADHÉRENT (7 JOURS OFFERTS) */}
           {activeTab === "create" && (
-            <form onSubmit={handleCreateAccount} className="space-y-5">
-              
-              <div className="bg-gradient-to-r from-orange-950/40 via-[#00f5c4]/10 to-purple-950/30 border border-[#ff5400]/40 rounded-xl p-4">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs font-bold uppercase tracking-wider text-[#ff7733] flex items-center gap-1.5">
-                    <Gift className="w-4 h-4" />
-                    <span>7 Jours d'Essai Offerts à l'Inscription</span>
-                  </span>
-                  <span className="text-[10px] font-mono bg-white/10 px-2 py-0.5 rounded text-gray-300">
-                    Mistral AI Exclusif
-                  </span>
-                </div>
-                <p className="text-xs text-gray-300 leading-relaxed">
-                  Créez votre compte en quelques secondes. Vous bénéficierez d'un <strong>accès complet immédiat de 7 jours</strong> alimenté par la clé Mistral propriétaire d'Alphabette, puis pourrez basculer en mode BYOK ou managé selon votre formule.
+            <div className="space-y-4 text-sm text-gray-300 leading-relaxed">
+              <div className="bg-white/[0.04] border border-white/15 rounded-xl p-4 space-y-2">
+                <div className="font-bold text-white">Inscription Alphabette (gratuite, avec un code d'invitation)</div>
+                <p className="text-xs">
+                  L'inscription se fait sur alphabette.fr et vaut pour toutes les applications. Aucun paiement n'est demandé :
+                  le paiement en ligne n'est pas encore ouvert. Pour utiliser l'IA d'IA Débat, il suffit d'ajouter votre propre
+                  clé avec le bouton « Clés API ».
                 </p>
-              </div>
-
-              {/* Sélection de la Formule */}
-              <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-gray-300 mb-2">
-                  Sélectionnez votre Formule d'Abonnement Annuel
-                </label>
-                
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {ALPHABETTE_PLANS.map((plan) => (
-                    <div
-                      key={plan.id}
-                      onClick={() => setSelectedPlan(plan.id)}
-                      className={`relative rounded-xl p-4 border cursor-pointer transition-all flex flex-col justify-between ${
-                        selectedPlan === plan.id
-                          ? plan.category === "bouquet"
-                            ? "bg-[#141224] border-purple-400 shadow-lg shadow-purple-500/10"
-                            : "bg-[#101422] border-[#00f5c4] shadow-lg shadow-[#00f5c4]/10"
-                          : "bg-black/40 border-white/10 hover:border-white/20"
-                      }`}
-                    >
-                      {plan.recommended && (
-                        <div className="absolute -top-2.5 right-3 bg-gradient-to-r from-amber-400 to-orange-500 text-black text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-md">
-                          Recommandé
-                        </div>
-                      )}
-
-                      <div>
-                        <div className="flex justify-between items-start mb-1">
-                          <div>
-                            <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded bg-white/10 text-gray-300 font-bold">
-                              {plan.badge}
-                            </span>
-                            <h4 className="text-sm font-bold text-white mt-1">{plan.title}</h4>
-                          </div>
-                          <div className="text-right">
-                            <span className={`text-xl font-black ${plan.category === "bouquet" ? "text-purple-400" : "text-[#00f5c4]"}`}>
-                              {plan.priceAnnualEur} €
-                            </span>
-                            <span className="text-[10px] text-gray-400 block">/ an</span>
-                          </div>
-                        </div>
-                        <p className="text-xs text-gray-300 mt-1 leading-relaxed">
-                          {plan.description}
-                        </p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Champs Nom / Email / Clé BYOK */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-gray-300 mb-1 font-semibold">Votre Nom & Prénom *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="ex. Valentin Richaud"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-[#10121a] border border-white/15 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00f5c4]"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs text-gray-300 mb-1 font-semibold">Votre Adresse E-mail *</label>
-                  <input
-                    type="email"
-                    required
-                    placeholder="ex. contact@alphabette.fr"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full bg-[#10121a] border border-white/15 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-[#00f5c4]"
-                  />
-                </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs text-gray-300 mb-1 font-semibold">
-                    Clé API Mistral AI (BYOK - Facultative, modifiable à tout moment)
-                  </label>
-                  <input
-                    type="password"
-                    placeholder="ex. mistral-api-key-... (laisser vide pour utiliser la clé Alphabette durant vos 7 jours d'essai)"
-                    value={mistralKeyInput}
-                    onChange={(e) => setMistralKeyInput(e.target.value)}
-                    className="w-full bg-[#10121a] border border-white/15 rounded-lg px-3 py-2 text-xs text-white font-mono focus:outline-none focus:border-[#00f5c4]"
-                  />
-                </div>
-              </div>
-
-              {/* Bouton de validation */}
-              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-3 border-t border-white/10">
-                <div className="text-[11px] text-gray-400 flex items-center gap-1.5">
-                  <Lock className="w-3.5 h-3.5 text-[#00f5c4]" />
-                  <span>Souveraineté européenne · Aucun tracker commercial</span>
-                </div>
-
-                <button
-                  type="submit"
-                  className="w-full sm:w-auto px-6 py-2.5 rounded-lg bg-[#00f5c4] hover:bg-[#00e0b0] text-black font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md"
+                <a
+                  href="https://alphabette.fr/inscription/"
+                  className="inline-block px-4 py-2 rounded-lg bg-[#00f5c4] text-black font-bold text-xs"
                 >
-                  <span>Créer mon Compte (7 jours d'essai offerts)</span>
-                  <ArrowRight className="w-4 h-4" />
-                </button>
+                  S'inscrire sur alphabette.fr
+                </a>
               </div>
-
-            </form>
+            </div>
           )}
 
-          {/* TAB 3: CONFIGURATION BYOK (BRING YOUR OWN KEY) */}
+          {/* TAB 3 : CLÉ MISTRAL DU COMPTE LOCAL */}
           {activeTab === "byok" && currentAccount && (
             <div className="space-y-5">
               <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4 space-y-1.5">
                 <div className="flex items-center gap-2 text-amber-300 font-bold text-xs uppercase tracking-wider">
                   <Key className="w-4 h-4 text-amber-400" />
-                  <span>Mode BYOK (Bring Your Own Key) — Mistral AI Exclusif</span>
+                  <span>Clé Mistral de ce compte</span>
                 </div>
                 <p className="text-xs text-gray-300 leading-relaxed">
-                  Conformément aux directives techniques de l'écosystème <strong>Alphabette</strong>, vous pouvez renseigner votre propre clé API Cloud Mistral officielle (<code>https://api.mistral.ai/v1</code>) ou cibler un serveur local sous Mac (Ollama / Metal).
+                  Si vous n'avez pas mis de clé Mistral dans « Clés API », celle-ci est utilisée pour Mistral. Elle reste dans ce navigateur et n'est envoyée qu'à Mistral (api.mistral.ai). L'adresse et le modèle ci-dessous ne sont pas utilisés : le modèle se règle dans « Clés API ».
                 </p>
               </div>
 
@@ -712,7 +513,7 @@ export function AlphabetteAccountModal({
                     className="w-full bg-[#10121a] border border-white/15 rounded-lg px-3 py-2 font-mono text-xs text-white focus:outline-none focus:border-amber-400"
                   />
                   <p className="text-[10px] text-gray-400 mt-1">
-                    Laissez vide pour continuer à utiliser la clé managée fournie par Alphabette.
+                    Alphabette ne fournit pas de clé : sans clé personnelle, l'IA ne peut pas répondre.
                   </p>
                 </div>
 
@@ -777,23 +578,12 @@ export function AlphabetteAccountModal({
               <div className="bg-black/40 border border-purple-500/30 rounded-xl p-4 space-y-2">
                 <div className="flex items-center gap-2 text-purple-300 font-bold text-xs uppercase tracking-wider">
                   <RefreshCw className="w-4 h-4 text-purple-400" />
-                  <span>Mise en commun des comptes dans l'écosystème Alphabette</span>
+                  <span>Ce compte reste sur cet appareil</span>
                 </div>
                 <p className="text-xs text-gray-300 leading-relaxed">
-                  Toutes les applications de la suite Alphabette (<em>IADébat</em>, <em>Infos Perso</em>, <em>L'Œil de l'Atelier</em>) 
-                  partagent le même protocole d'identité souveraine <code>ALPHABETTE_UNIFIED_ACCOUNT_V1</code>.
+                  Il n'est envoyé à aucun serveur et ne sert qu'à IA Débat. Les autres applications Alphabette utilisent
+                  l'inscription commune par code d'invitation (alphabette.fr/inscription).
                 </p>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2 text-[11px] text-gray-300">
-                  <div className="p-2 rounded bg-white/5 border border-white/5">
-                    <strong>1. Automatique :</strong> Reconnaissance immédiate dans le même navigateur entre tous les onglets d'applications.
-                  </div>
-                  <div className="p-2 rounded bg-white/5 border border-white/5">
-                    <strong>2. Clé Souveraine :</strong> Copiez votre clé et collez-la dans une autre application pour activer vos droits en 1 seconde.
-                  </div>
-                  <div className="p-2 rounded bg-white/5 border border-white/5">
-                    <strong>3. Passeport .alphabette-pass :</strong> Téléchargez votre fichier pour transférer votre licence sur un autre poste ou mobile.
-                  </div>
-                </div>
               </div>
 
               {/* Si un compte existe : Section d'exportation */}
@@ -801,10 +591,11 @@ export function AlphabetteAccountModal({
                 <div className="bg-[#101422] border border-white/10 rounded-xl p-4 space-y-3">
                   <h4 className="text-xs font-bold uppercase tracking-wider text-[#00f5c4] flex items-center gap-1.5">
                     <Key className="w-4 h-4" />
-                    <span>Votre Clé Souveraine de Transfert ALPHABETTE</span>
+                    <span>Votre compte en texte</span>
                   </h4>
                   <p className="text-xs text-gray-300">
-                    Copiez cette chaîne cryptée et collez-la dans <em>Infos Perso</em> ou <em>L'Œil de l'Atelier</em> pour y être instantanément reconnu avec votre {currentAccount.planTitle} :
+                    Pour retrouver ce compte dans IA Débat sur un autre navigateur. Ce texte n'est <strong>pas chiffré</strong> :
+                    il contient votre nom et votre e-mail (jamais votre clé IA). Ne le publiez pas.
                   </p>
                   
                   <div className="flex items-center gap-2">
@@ -829,11 +620,11 @@ export function AlphabetteAccountModal({
               <div className="bg-black/30 border border-white/10 rounded-xl p-4 space-y-4">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-white flex items-center gap-1.5">
                   <Upload className="w-4 h-4 text-purple-400" />
-                  <span>Importer un Compte depuis une autre application ALPHABETTE</span>
+                  <span>Importer un compte IA Débat</span>
                 </h4>
                 
                 <p className="text-xs text-gray-400">
-                  Vous avez déjà créé votre compte dans <em>Infos Perso</em> ou <em>L'Œil de l'Atelier</em> ? Collez votre clé ci-dessous ou importez votre fichier passeport pour synchroniser vos droits sur IADébat :
+                  Collez le texte copié depuis IA Débat sur un autre navigateur, ou chargez le fichier téléchargé :
                 </p>
 
                 <form onSubmit={handleImportSubmit} className="space-y-3">
@@ -878,7 +669,7 @@ export function AlphabetteAccountModal({
                       className="w-full sm:w-auto px-5 py-2 rounded-lg bg-purple-500 hover:bg-purple-600 text-white font-bold text-xs uppercase tracking-wider cursor-pointer transition-colors flex items-center justify-center gap-1.5"
                     >
                       <RefreshCw className="w-3.5 h-3.5" />
-                      <span>Valider & Synchroniser</span>
+                      <span>Importer</span>
                     </button>
                   </div>
                 </form>

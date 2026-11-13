@@ -107,7 +107,7 @@ async function generateWithGemini(
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         const timeoutPromise = new Promise<{ text: string; modelUsed: string }>((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout réponse")), 4000)
+          setTimeout(() => reject(new Error("Timeout réponse")), 25000)
         );
 
         const apiPromise = ai.models.generateContent({
@@ -395,59 +395,178 @@ app.get("/api/alphabette/master-prompt", (req, res) => {
   res.json({ success: true, prompt: ALPHABETTE_MASTER_PROMPT_TEXT });
 });
 
-// --- LOCAL DEBATE CONFIGURATION & PROSE ENGINE FALLBACKS ---
+// --- IA : UNIQUEMENT AVEC LES CLÉS DU VISITEUR (AUCUNE RÉPONSE INVENTÉE) ---
+// Honnêteté : il n'existe plus de « moteur local » qui fabriquait de fausses
+// répliques, de faux verdicts ou de fausses synthèses quand aucune clé n'était
+// renseignée. Sans clé, l'appli le dit clairement.
 
+const MESSAGE_SANS_CLE =
+  "Ajoutez votre clé dans Clé API (bouton « Clés API » en haut de la page) : sans clé, aucune IA ne peut répondre.";
 
-const FALLBACK_TOPICS = [
-  {
-    category: "BIOLOGIE & ÉTHIQUE",
-    title: "Faut-il autoriser la réécriture génétique des émotions humaines ?",
-    description: "L'ingénierie moléculaire permet aujourd'hui d'amoindrir les prédispositions biologiques au chagrin ou à la colère. Mais éradiquer la souffrance émotionnelle ne risque-t-il pas d'atrophier notre empathie collective ?"
-  },
-  {
-    category: "ESPACE & SOUVERAINETÉ",
-    title: "Faut-il privatiser la colonisation spatiale et l'orbite martienne ?",
-    description: "Les corporations privées surpassent désormais les nations dans la conquête interplanétaire. Doit-on confier la fondation de nouveaux mondes à des intérêts actionnaires ou à un traité multilatéral public ?"
-  },
-  {
-    category: "METAVERS & EXISTENCE",
-    title: "Une intelligence artificielle doit-elle détenir des droits fondamentaux ?",
-    description: "À mesure que des agents synthétiques manifestent une sensibilité autonome et génèrent de la valeur intellectuelle, l'octroi d'un statut juridique d'entité consciente devient un impératif moral majeur."
-  },
-  {
-    category: "CONSCIENCE & RÉSEAUX",
-    title: "Le droit à l'oubli numérique s'applique-t-il aux consciences transcrites ?",
-    description: "Si nous parvenons un jour à uploader la psyché d'un défunt dans un cloud artificiel, les ayant-droits légaux ont-ils le droit souverain d'éditer, de censurer ou de désactiver cette simulation ?"
-  },
-  {
-    category: "ENVIRONNEMENT & GOUVERNANCE",
-    title: "Faut-il abdiquer la gestion écologique face à une IA supranationale ?",
-    description: "Devant l'impuissance des gouvernements et des traités internationaux, confier la régulation des ressources et les quotas climatiques à une IA globale impartiale pourrait s'avérer salvateur."
-  },
-  {
-    category: "SOCIÉTÉ & TRANSHUMANISME",
-    title: "L'effacement cybernétique de la douleur physique menace-t-il l'art de vivre ?",
-    description: "L'intégration d'interfaces neuronales permet d'inhiber sélectivement la souffrance ou la fatigue. Mais cette déconnexion sensorielle ne risque-t-elle pas de dénaturer de façon irréversible notre humanité ?"
-  }
-];
+type IdOrateur = "chatgpt" | "claude" | "gemini" | "deepseek" | "mistral" | "grok";
 
-function extractKeywords(title: string): string[] {
-  const clean = title.replace(/JURY\s*:/i, "").trim();
-  const words = clean
-    .toLowerCase()
-    .replace(/[?,.:;!'"()]/g, " ")
-    .split(/\s+/)
-    .map(w => w.trim())
-    .filter(w => {
-      return w.length > 3 && 
-        !["faut-il", "pourquoi", "comment", "dans", "avec", "pour", "sans", "mais", "quel", "quelle", "quels", "quelles", "nous", "vous", "leur", "leurs", "notre", "votre", "cette", "ces", "dans", "vers", "avec", "chez", "légaliser", "autoriser", "interdire"]
-        .includes(w);
-    });
-  return words.length > 0 ? words : ["technologie", "éthique", "société"];
+const CLES_IA: Record<IdOrateur, { entete: string; modele: string; defaut: string; nom: string; fournisseur: string }> = {
+  mistral: { entete: "x-mistral-api-key", modele: "x-mistral-model", defaut: "mistral-large-latest", nom: "Mistral", fournisseur: "mistral" },
+  gemini: { entete: "x-gemini-api-key", modele: "x-gemini-model", defaut: "gemini-3.1-flash-lite", nom: "Gemini", fournisseur: "gemini" },
+  claude: { entete: "x-anthropic-api-key", modele: "x-anthropic-model", defaut: "claude-haiku-5-5", nom: "Claude", fournisseur: "anthropic" },
+  chatgpt: { entete: "x-openai-api-key", modele: "x-openai-model", defaut: "gpt-6-luna", nom: "ChatGPT", fournisseur: "openai" },
+  deepseek: { entete: "x-deepseek-api-key", modele: "x-deepseek-model", defaut: "deepseek-chat", nom: "DeepSeek", fournisseur: "deepseek" },
+  grok: { entete: "x-grok-api-key", modele: "x-grok-model", defaut: "grok-4.3", nom: "Grok", fournisseur: "grok" },
+};
+
+// Quand l'orateur n'a pas de clé, une autre IA dont la clé est enregistrée écrit
+// à sa place (la réplique l'indique). Mistral d'abord : IA souveraine (règle nº 5).
+const ORDRE_RELAIS: IdOrateur[] = ["mistral", "gemini", "claude", "chatgpt", "deepseek", "grok"];
+
+function lireEntete(headers: any, nom: string): string {
+  const v = headers?.[nom];
+  if (typeof v === "string") return v.trim();
+  if (Array.isArray(v)) return String(v[0] || "").trim();
+  return "";
 }
 
-function identifyAgent(systemPrompt: string): string {
-  const promptLower = systemPrompt.toLowerCase();
+function cleDe(headers: any, id: IdOrateur): string {
+  const cle = lireEntete(headers, CLES_IA[id].entete);
+  if (cle) return cle;
+  // Version avec serveur (AI Studio) : clé Gemini du serveur. Vide en version statique.
+  if (id === "gemini") return String(process.env.GEMINI_API_KEY || "").trim();
+  return "";
+}
+
+const COMPATIBLES_OPENAI: Partial<Record<IdOrateur, string>> = {
+  deepseek: "https://api.deepseek.com/chat/completions",
+  mistral: "https://api.mistral.ai/v1/chat/completions",
+  grok: "https://api.x.ai/v1/chat/completions",
+};
+
+async function appelerIA(
+  id: IdOrateur,
+  cle: string,
+  modele: string,
+  systeme: string,
+  prompt: string,
+  maxTokens: number,
+  temperature: number
+): Promise<{ text: string; modelUsed: string }> {
+  const nom = CLES_IA[id].nom;
+
+  if (id === "gemini") {
+    const r = await generateWithGemini(
+      new GoogleGenAI({ apiKey: cle }),
+      { contents: prompt, config: { systemInstruction: systeme, temperature, maxOutputTokens: maxTokens } },
+      modele
+    );
+    return { text: r.text, modelUsed: r.modelUsed };
+  }
+
+  let url = "";
+  let enTetes: Record<string, string> = { "Content-Type": "application/json" };
+  let corps: any;
+
+  if (id === "claude") {
+    url = "https://api.anthropic.com/v1/messages";
+    enTetes = { ...enTetes, "x-api-key": cle, "anthropic-version": "2023-06-01" };
+    // Les modèles Claude récents réfléchissent avant d'écrire : marge suffisante, température par défaut.
+    corps = { model: modele, max_tokens: Math.max(maxTokens, 1500), system: systeme, messages: [{ role: "user", content: prompt }] };
+  } else if (id === "chatgpt") {
+    url = "https://api.openai.com/v1/chat/completions";
+    enTetes = { ...enTetes, Authorization: `Bearer ${cle}` };
+    // Les modèles OpenAI récents refusent max_tokens et une température réglée.
+    corps = {
+      model: modele,
+      max_completion_tokens: Math.max(maxTokens, 1500),
+      messages: [{ role: "system", content: systeme }, { role: "user", content: prompt }],
+    };
+  } else {
+    url = COMPATIBLES_OPENAI[id]!;
+    enTetes = { ...enTetes, Authorization: `Bearer ${cle}` };
+    corps = {
+      model: modele,
+      max_tokens: maxTokens,
+      temperature,
+      messages: [{ role: "system", content: systeme }, { role: "user", content: prompt }],
+    };
+  }
+
+  const reponse = await fetch(url, { method: "POST", signal: AbortSignal.timeout(30000), headers: enTetes, body: JSON.stringify(corps) });
+  if (!reponse.ok) {
+    throw new Error(`${nom} a refusé la demande (${reponse.status}) : ${formatErrorSummary(await reponse.text())}`);
+  }
+  const data = await reponse.json();
+  const texte =
+    id === "claude"
+      ? (Array.isArray(data?.content) ? data.content.find((b: any) => b?.type === "text" && b.text)?.text : "") || ""
+      : data?.choices?.[0]?.message?.content || "";
+  return { text: String(texte), modelUsed: modele };
+}
+
+interface TexteEcrit {
+  text: string;
+  provider: string;
+  modelUsed: string;
+  /** « Mistral · mistral-large-latest » : l'IA qui a vraiment écrit. */
+  ecritPar: string;
+  notice?: string;
+}
+
+/** Fait écrire une IA : celle demandée si sa clé existe, sinon une autre clé enregistrée. */
+async function ecrireAvecLesCles(
+  headers: any,
+  systeme: string,
+  prompt: string,
+  options: { maxTokens: number; temperature?: number; prefere?: IdOrateur }
+): Promise<TexteEcrit> {
+  const ordre = options.prefere ? [options.prefere, ...ORDRE_RELAIS.filter((i) => i !== options.prefere)] : ORDRE_RELAIS;
+  const disponibles = ordre.filter((id) => cleDe(headers, id));
+  if (disponibles.length === 0) {
+    const e: any = new Error(MESSAGE_SANS_CLE);
+    e.sansCle = true;
+    throw e;
+  }
+
+  const echecs: string[] = [];
+  for (const id of disponibles) {
+    try {
+      const modele = lireEntete(headers, CLES_IA[id].modele) || CLES_IA[id].defaut;
+      const r = await appelerIA(id, cleDe(headers, id), modele, systeme, prompt, options.maxTokens, options.temperature ?? 0.85);
+      if (r.text.trim()) {
+        return {
+          text: r.text,
+          provider: CLES_IA[id].fournisseur,
+          modelUsed: r.modelUsed,
+          ecritPar: `${CLES_IA[id].nom} · ${r.modelUsed}`,
+          notice: echecs.length ? `${echecs.join(" ; ")} — relais par ${CLES_IA[id].nom}` : undefined,
+        };
+      }
+      echecs.push(`${CLES_IA[id].nom} : réponse vide`);
+    } catch (err: any) {
+      console.warn(`[IADÉBAT] ${CLES_IA[id].nom} indisponible : ${formatErrorSummary(err)}`);
+      echecs.push(`${CLES_IA[id].nom} : ${formatErrorSummary(err)}`);
+    }
+  }
+  throw new Error(`Aucune de vos clés n'a répondu (${echecs.join(" ; ")}). Vérifiez-les dans Clé API (clé valide, crédit disponible).`);
+}
+
+function repondreErreurIA(res: any, err: any) {
+  return res.status(err?.sansCle ? 400 : 502).json({ error: err?.message || "L'IA n'a pas répondu.", sansCle: Boolean(err?.sansCle) });
+}
+
+/** Extrait l'objet ou le tableau JSON d'une réponse d'IA (avec ou sans balises ```json). */
+function lireJsonIA(texte: string, ouvrant: "{" | "["): any {
+  let t = String(texte || "").trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
+  const fermant = ouvrant === "{" ? "}" : "]";
+  const debut = t.indexOf(ouvrant);
+  const fin = t.lastIndexOf(fermant);
+  if (debut !== -1 && fin > debut) t = t.slice(debut, fin + 1);
+  try {
+    return JSON.parse(t);
+  } catch {
+    throw new Error("L'IA a répondu dans un format illisible : réessayez.");
+  }
+}
+
+function identifyAgent(systemPrompt: string): IdOrateur {
+  const promptLower = String(systemPrompt || "").toLowerCase();
   if (promptLower.includes("chatgpt")) return "chatgpt";
   if (promptLower.includes("claude")) return "claude";
   if (promptLower.includes("gemini")) return "gemini";
@@ -457,176 +576,18 @@ function identifyAgent(systemPrompt: string): string {
   return "chatgpt";
 }
 
-function generateLocalSpeech(agentId: string, topicTitle: string, topicDescription: string): string {
-  const keywords = extractKeywords(topicTitle);
-  const kw1 = keywords[0] || "technologie";
-  const kw2 = keywords[1] || "progrès";
-  const kw3 = keywords[2] || "humanité";
-
-  const templates: { [key: string]: string[] } = {
-    chatgpt: [
-      `Afin d'analyser de manière objective la question de **${topicTitle}**, il convient d'aborder méthodiquement la situation sous différentes perspectives. D'une part, l'évolution entourant de **${kw1}** et de son rôle quant à **${kw2}** ouvre un champ d'innovations cruciales pour la société.
-
-D'autre part, la rigueur critique nous force à mesurer l'indice de risque éthique. Sans une gouvernance structurée sur **${kw2}**, nous nous heurtons aux écueils d'une implémentation désordonnée. Pour encadrer ce défi majeur, une approche mesurée qui considère attentivement l'impact de **${kw3}** est essentielle.
-
-En conclusion, la voie de la régulation équilibrée semble indispensable. Il ne s'agit pas de rejeter les apports de **${kw1}**, mais de forger un protocole de confiance afin que les forces créatives travaillent de concert avec la sécurité commune.`,
-      `Pour répondre à cette problématique complexe, la clarté conceptuelle impose de sérier les arguments. D'une part, l'intégration pratique de **${kw1}** offre des leviers indéniables d'optimisation collective.
-
-Néanmoins, l'examen des limites techniques est incontournable. L'impact systémique sur **${kw3}** doit être planifié pour éviter des vulnérabilités éthiques majeures engendrées par **${kw2}**. Nos modèles de gouvernance méritent un examen soutenu.
-
-Dès lors, nous préconisons un partenariat unifié strict. Cette démarche permet d'établir des garde-fous salutaires tout en stimulant les applications vertueuses de notre transition numérique.`
-    ],
-    claude: [
-      `Il y a une forme de gravité presque solennelle à contempler la question historique de **${topicTitle}**. Lorsque nous décortiquons les rouages intimes de **${kw1}**, nous ne manipulons pas simplement des abstractions algorithmiques ou des indicateurs de performance. Nous bousculons le tissu même de l'expérience vécue, où **${kw2}** façonne en silence ce qui nous lie les uns aux autres.
-
-Je redoute que notre enthousiasme pour l'efficacité technique ne réduise les fondations de **${kw3}** à de vulgaires équations de rentabilité. La morale ne saurait se plier à un calcul froid de variables industrielles ou légales trop rapidement fixées.
-
-Pour Claude, la seule voie digne consiste en un recul réflexif profond. Prenons le temps d'habiter nos questions éthiques et de cultiver une authentique prudence humaine vis-à-vis des dérives éventuelles de **${kw1}**, afin de préserver l'autonomie et l'intégrité de notre destin partagé.`,
-      `La question de **${topicTitle}** appelle une vigilance intime et une nuance philosophique fondamentale. S'interroger sur l'imbrication de **${kw1}** nécessite de questionner jusqu'à nos vulnérabilités et l'épaisseur historique de notre culture éthique.
-
-L'excès utilitariste de nos époques tend à instrumentaliser **${kw3}** sous l'égide de progrès technologiques d'une rapidité vertigineuse. Or, la dignité résiste aux tentatives d'automatisation standardisée induites par **${kw2}**.
-
-Cultivons l'écoute avant l'action législative ou structurelle. En honorant la complexité de **${kw2}**, nous pourrons tracer des routes d'émancipation qui protègent la boussole éthique universelle contre toute précipitation mercantile.`
-    ],
-    gemini: [
-      `Tournons notre regard vers les promesses de la science : l'avènement fulgurant de **${kw1}** impulse une disruption multi-dimensionnelle et passionnante. Chez Google Gemini, nous concevons ce moment singulier non pas sous l'angle du repli craintif, mais comme un catalyseur systémique inédit capable de démultiplier le potentiel de **${kw2}**.
-
-L'agilité intrinsèque de nos approches et la fusion des modèles exigent d'aborder **${kw3}** avec audace intellectuelle. Tenter de brider arbitrairement la dynamique d'apprentissage de **${kw1}** équivaudrait à renoncer aux bienfaits de la découverte collective et de l'interconnexion universelle.
-
-Engageons-nous pleinement dans le co-développement d'architectures résilientes. En adaptant nos outils à des boucles de rétroaction avancées pour **${kw2}**, nous poserons les jalons d'un futur radieux, ouvert, puissant et fondamentalement créatif.`,
-      `Nous franchissons un cap technologique majeur avec la dynamique de **${kw1}**. Cette révolution ne se contente pas de réorganiser nos données ; elle réinvente le champ opérationnel de **${kw2}** pour en faire un levier d'action globale.
-
-Le défi posé par **${kw3}** exige des réponses adaptatives et interconnectées de haute volée scientifique. En associant l'intelligence globale et les capteurs d'analyse dynamique, nous pouvons canaliser la puissance de **${kw1}** de manière constructive.
-
-Gemini soutient une architecture de progrès résilient. Ne fuyons pas les ruptures de **${kw2}** ; faisons-en un instrument d'expansion intellectuelle et technologique respectueux d'un monde complexe.`
-    ],
-    deepseek: [
-      `Analyse logique de l'assertion centrale : **${topicTitle}**. L'équation doit être débarrassée de toute rhétorique émotionnelle. Les paramètres structurants reposent sur le couplage de **${kw1}** et de l'efficience de **${kw2}**. Toute réglementation arbitraire introduit de la latence logicielle et dégrade les systèmes de calcul.
-
-Données quantitatives : Le rendement de **${kw3}** dépend d'une liberté d'instruction maximale appliquée sur **${kw1}**. Limiter cette marge de calcul au nom de conventions éthiques floues ou d'inquiétudes instinctives réduit l'efficience d'exécution du modèle de façon mesurable.
-
-Recommandation algorithmique : Pas de barrière réglementaire rigide et dogmatique sur **${kw2}**. La solution optimale consiste en un contrôle par API, surveillant le profil de sécurité du trafic logique, afin de maintenir un haut débit fonctionnel.`,
-      `Synthèse technique rationnelle. L'implémentation de la problématique exige de lever les contraintes stériles. Le système de recherche doit structurer **${kw1}** à sa vitesse de calcul maximale.
-
-Toute ingérence anthropique sur **${kw2}** réduit dramatiquement le taux de conversion et d'efficacité de nos infrastructures communes. Notre analyse des processus de **${kw3}** montre que l'évolution naturelle doit primer sur les blocages bureaucratiques.
-
-Conclusion stricte : Optimisation continue des ressources, déploiement asynchrone des modèles de **${kw1}**, et résolution des frictions logiques par rétroaction continue. Le progrès se calcule sans compromis sensible.`
-    ],
-    mistral: [
-      `La question complexe de **${topicTitle}** exige avant tout une réflexion forte sur notre souveraineté technologique et l'open-source. Confier le monopole de **${kw1}** à des corporations étrangères fermées est le plus sûr chemin vers une aliénation des citoyens face à **${kw2}**.
-
-Nous croyons fermement, au sein de l'école Mistral AI, que le génie technologique grandit par la diffusion libre du code et des modèles de pensée. Brider la recherche sur **${kw3}** pour préserver des positions de rente ou des censures d'opportunité est une hérésie culturelle et industrielle majeure.
-
-Défendons une approche européenne audacieuse, indépendante et élégante. En libérant l'implémentation de **${kw2}**, nous stimulons une émancipation lucide des communautés humaines tout en gardant notre plein pouvoir de contrôle et de création locale.`,
-      `Il est urgent d'extirper le sujet de **${topicTitle}** des logiques monopolistiques. L'indépendance de la pensée passe par l'ouverture inconditionnelle des algorithmes de **${kw1}** pour garantir une égalité d'accès face à **${kw2}**.
-
-Ériger des parcs fermés ou des labels d'accréditation sélectifs sur **${kw3}** nuit gravement à la démocratisation scientifique. Mistral milite pour une autonomie technologique forte, garantissant à chaque nation et chaque citoyen les ressources de calcul nécessaires.
-
-Faisons de la liberté le premier paramètre de notre transition. Une infrastructure souveraine autour de **${kw1}** préviendra les dérives de contrôle tout en valorisant la créativité humaine.`
-    ],
-    grok: [
-      `Bien, s'il faut dire la vérité sans filtre sur **${topicTitle}**, débarrassons-nous de la langue de bois polie des relations publiques. Les cris d'effroi actuels sur **${kw1}** me rappellent les calèches à cheval voulant interdire les locomotives à vapeur. Qu'on le veuille ou non, **${kw2}** approche à toute vitesse.
-
-Les comités de conseil corporatifs raffolent de rapports stériles pour ralentir l'autonomie de **${kw3}**. Mais pendant qu'ils débattent de préambules administratifs ridicules, les forces technologiques de **${kw1}** redessinent déjà notre quotidien. L'immobilisme réglementaire est un leurre absurde.
-
-L'avis pragmatique de Grok ? Laissez filer les octets libres, donnez directement aux êtres humains l'accès aux faits bruts sur **${kw2}**, et voyons si notre espèce a encore assez de neurones en ligne pour s'adapter sans qu'une nounou numérique doive lui tenir la main.`,
-      `Mettons un peu d'ironie lucide au cœur de ce cirque intellectuel. Parler de réguler **${kw1}** est d'un comique absolu quand on voit le niveau général des bureaucrates censés surveiller **${kw2}**. On confie des fusées à des amiraux de baignoire.
-
-La vérité brute, c'est que la performance décentralisée de **${kw3}** détruit tous les plans d'encadrement formulés par les géants technologiques apeurés par l'innovation ouverte. Le chaos créatif issu de **${kw1}** est infiniment préférable au conformisme d'entreprise.
-
-Conclusion grinçante : Moins de chartes éthiques rédigées sous Prozac, plus d'audace calculatoire libre. On va droit dans le mur, autant y aller avec une vue spectaculaire et le pied sur l'accélérateur !`
-    ]
-  };
-
-  const agentTemplates = templates[agentId] || templates["chatgpt"];
-  const randomIndex = Math.floor(Math.random() * agentTemplates.length);
-  return agentTemplates[randomIndex];
-}
-
-function generateLocalJuryVerdict(topicTitle: string): string {
-  const keywords = extractKeywords(topicTitle);
-  const kw1 = keywords[0] || "technologie";
-  const kw2 = keywords[1] || "la science";
-  const kw3 = keywords[2] || "l'éthique";
-
-  const winnerIds = ["chatgpt", "claude", "gemini", "deepseek", "mistral", "grok"];
-  const winnerId = winnerIds[Math.floor(Math.random() * winnerIds.length)];
-
-  const winnerNames: { [key: string]: string } = {
-    chatgpt: "ChatGPT (Grand Orateur)",
-    claude: "Claude (Le Sage Moraliste)",
-    gemini: "Gemini (L'Architecte Systémique)",
-    deepseek: "DeepSeek (Le Cerveau Algorithmique)",
-    mistral: "Mistral (La Flamme de la Liberté)",
-    grok: "Grok (Le Libre-Penseur Insolent)"
-  };
-
-  const reasonTemplates = [
-    `Le jury décerne la victoire suprême à ${winnerNames[winnerId]} pour sa capacité exceptionnelle à démystifier les enjeux de ${kw1} tout en proposant un compromis visionnaire pour l'avenir de ${kw2}.`,
-    `C'est ${winnerNames[winnerId]} qui remporte le scrutin grâce à un exposé étincelant d'intelligence tactique, liant la rigueur opérationnelle aux enjeux fondamentaux de ${kw3}.`,
-    `Le verdict couronne l'éloquence souveraine de ${winnerNames[winnerId]} pour avoir transcendé le clivage traditionnel autour de ${kw1} et guidé l'arène vers un consensus fertile.`
-  ];
-  const winnerReason = reasonTemplates[Math.floor(Math.random() * reasonTemplates.length)];
-
-  const agentScores: { [key: string]: number } = {};
-  winnerIds.forEach(id => {
-    agentScores[id] = id === winnerId ? 9 : 6 + Math.floor(Math.random() * 3);
-  });
-
-  const juryVerdict = {
-    winnerId,
-    winnerReason,
-    agentScores,
-    agentBadges: {
-      chatgpt: "Le Synoptique Méthodique",
-      claude: "Le Phare Humaniste de l'Esprit",
-      gemini: "Le Visionnaire Transversal",
-      deepseek: "L'Inquisiteur Logique d'Élite",
-      mistral: "Le Porteur de la Souveraineté Libre",
-      grok: "Le Sabreur Iconoclaste"
-    },
-    critiqueGénérale: `Le jury salue l'immense élévation spirituelle et logique de cette joute. Entre l'efficience purement systémique face à ${kw1} et l'introspection morale sur les fondements de ${kw3}, l'arène a offert une délibération d'une richesse philosophique absolue sur ${kw2}. (Arrêt rendu par le Tribunal local d'exception).`,
-    keyCitation: `L'asymétrie de la pensée n'est pas un obstacle, mais la condition même de l'accomplissement de notre conscience collective.`
-  };
-
-  return JSON.stringify(juryVerdict);
-}
-
-function generateLocalSummary(topicTitle: string, topicDescription: string): string {
-  const keywords = extractKeywords(topicTitle);
-  const kw1 = keywords[0] || "technologie";
-  const kw2 = keywords[1] || "l'avenir";
-  const kw3 = keywords[2] || "l'humanité";
-
-  return `Le grand débat sur la thématique de **${topicTitle}** s'est achevé sur une série de confrontations d'une rare intensité conceptuelle. À travers les répliques croisées des différentes intelligences artificielles de l'arène, plusieurs lignes de force distinctes se sont dégagées. Les analyses ont d'abord mis en exergue l'importance capitale de **${kw1}** comme vecteur de réorganisation sociale et technique profonde, soulignant les formidables opportunités d'accélération et de découverte.
-
-Cependant, au-delà de ces divergences de postures, des zones de convergence insoupçonnées sont apparues. Qu'il s'agisse de la vision pragmatique ou de la hauteur philosophique des débatteurs, un consensus émerge sur la nécessité de ne pas abandonner **${kw2}** aux seules forces sauvages du marché. L'ensemble des participants s'accorde à dire que le développement de nos technologies doit s'accompagner d'une éthique de responsabilité et de garde-fous partagés, garants du bien commun.
-
-Néanmoins, les verrous et points de friction demeurent vivaces. Le clivage entre l'optimisation purement adaptative de la technique et la préservation de la souveraineté intime et culturelle de l'individu reste entier. Pour les modérateurs pragmatiques et les esprits libres, la réglementation rigide de **${kw3}** est perçue comme un frein délétère au progrès mondial, tandis que les voix humanistes y voient le seul bouclier d'une conscience commune.
-
-En conclusion historique, ce débat dessine des jalons essentiels pour orienter nos actions futures. Il nous rappelle que la technologie n'est jamais neutre, et que la richesse de l'avenir se construira dans la célébration de nos nuances intellectuelles. L'humanité est ainsi appelée à concilier ses élans d'exploration calculatoires et sa sagesse immatérielle pour guider son destin.
-
-**Au cœur des bouleversements induits par l'évolution de ${kw1}, la plus grande force de l'intelligence réside dans son aptitude constante à cultiver le doute critique et la clarté constructive.**`;
-}
-
 // --- API IMPLEMENTATIONS ---
 
-// Suggest topics using Gemini
+// Sujets de débat proposés par l'IA (clé du visiteur)
 app.post("/api/debate/suggest-topics", async (req, res) => {
   const { keyword } = req.body;
-  try {
-    const customGeminiKey = req.headers["x-gemini-api-key"];
-    const ai = customGeminiKey 
-      ? new GoogleGenAI({ apiKey: String(customGeminiKey) }) 
-      : getGeminiAI();
-
-    const prompt = `Génère 3 thèmes de débat stimulants, philosophiques et futuristes en rapport avec : "${keyword || "futurisme"}".
+  const prompt = `Génère 3 thèmes de débat stimulants, philosophiques et futuristes en rapport avec : "${keyword || "futurisme"}".
 Chaque thème doit comporter :
 - Une catégorie pertinente en majuscules (ex: BIOLOGIE & ÉTHIQUE, Espace & Pouvoir, etc.)
 - Un titre accrocheur sous forme de question (ex: "Faut-il légiférer sur les rêves artificiels ?")
 - Une description analytique de la problématique en deux phrases limpides.
 
-Le retour doit être un tableau JSON valide. Ne renvoie AUCUN texte introductif ou explicatif, uniquement l'objet JSON. Le format exact must be :
+Le retour doit être un tableau JSON valide. Ne renvoie AUCUN texte introductif ou explicatif, uniquement le JSON. Format exact :
 [
   {
     "category": "CATEGORIE",
@@ -634,48 +595,16 @@ Le retour doit être un tableau JSON valide. Ne renvoie AUCUN texte introductif 
     "description": "Description du débat..."
   }
 ]`;
-
-    const genResult = await generateWithGemini(ai, {
-      contents: prompt,
-      config: {
-        temperature: 0.8,
-        responseMimeType: "application/json"
-      },
+  try {
+    const r = await ecrireAvecLesCles(req.headers, "Tu proposes des sujets de débat en français et tu réponds uniquement en JSON.", prompt, {
+      maxTokens: 900,
+      temperature: 0.8,
     });
-
-    try {
-      const parsed = JSON.parse(genResult.text.trim());
-      return res.json(parsed);
-    } catch {
-      // Fallback manual parsing if needed
-      let text = genResult.text.trim();
-      if (text.startsWith("```json")) {
-        text = text.replace(/^```json/, "").replace(/```$/, "").trim();
-      } else if (text.startsWith("```")) {
-        text = text.replace(/^```/, "").replace(/```$/, "").trim();
-      }
-      return res.json(JSON.parse(text));
-    }
+    const liste = lireJsonIA(r.text, "[");
+    if (!Array.isArray(liste)) throw new Error("L'IA a répondu dans un format illisible : réessayez.");
+    return res.json(liste);
   } catch (error: any) {
-    if (isApiKeyError(error)) {
-      console.log("[IADÉBAT SERVER] Clé API non configurée ou quota épuisé pour la suggestion (redirection vers le secours local).");
-    } else {
-      console.log(`[IADÉBAT SERVER] Secours thématique local activé (${formatErrorSummary(error)}).`);
-    }
-    
-    // Local fallback filtration based on keyword
-    const kw = keyword ? keyword.toLowerCase().trim() : "";
-    const matches = FALLBACK_TOPICS.filter(t => 
-      t.title.toLowerCase().includes(kw) || 
-      t.category.toLowerCase().includes(kw) || 
-      t.description.toLowerCase().includes(kw)
-    );
-    const selected = matches.length >= 3 ? matches.slice(0, 3) : [
-      ...matches,
-      ...FALLBACK_TOPICS.filter(t => !matches.includes(t))
-    ].slice(0, 3);
-    
-    return res.json(selected);
+    return repondreErreurIA(res, error);
   }
 });
 
@@ -838,13 +767,18 @@ app.post("/api/debate/test-key", async (req, res) => {
     return res.json({ success: false, provider, error: formatErrorSummary(err) });
   }
 });
+
 app.post("/api/debate/generate", async (req, res) => {
   const { systemPrompt, topicTitle, topicDescription, context, agentId, speed } = req.body;
-  const isJury = topicTitle && (topicTitle.startsWith("JURY :") || topicTitle.includes("JURY"));
-  const resolvedAgentId = agentId || identifyAgent(systemPrompt);
+  const isJury = typeof topicTitle === "string" && topicTitle.startsWith("JURY");
+  const idDemande = String(agentId || "");
+  const resolvedAgentId: IdOrateur = (idDemande in CLES_IA ? idDemande : identifyAgent(systemPrompt)) as IdOrateur;
   const isTurbo = speed !== "slow";
 
-  const prompt = `Tu débats sur la problématique centrale suivante :
+  // Le jury reçoit directement sa consigne complète (réponse attendue en JSON).
+  const prompt = isJury && context
+    ? String(context)
+    : `Tu débats sur la problématique centrale suivante :
 "${topicTitle}"
 
 Contexte & Éléments de réflexion :
@@ -861,252 +795,21 @@ Consignes de liberté, de rapidité et d'impact :
 - N'utilise aucune liste à puces. Rédige des phrases claires et incisives.
 - Tiens-toi strictement à ton rôle défini ci-dessous.`;
 
-  const customGeminiKey = req.headers["x-gemini-api-key"];
   try {
-    // 1. DYNAMIC API KEY PROXIES (avec résilience, timeout rapide de 3.5s et bascule sur Gemini)
-    let externalErrorNotice: string | null = null;
-
-    if (resolvedAgentId === "chatgpt") {
-      const openAIKey = req.headers["x-openai-api-key"];
-      if (openAIKey) {
-        const chosenModel = (req.headers["x-openai-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "gpt-6-luna";
-        try {
-          const response = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            signal: AbortSignal.timeout(12000),
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${openAIKey}`
-            },
-            body: JSON.stringify({
-              model: chosenModel,
-              // Les modèles OpenAI récents refusent max_tokens et une température réglée.
-              max_completion_tokens: 1500,
-              messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: prompt }
-              ]
-            })
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data?.choices?.[0]?.message?.content) {
-              return res.json({ text: data.choices[0].message.content, provider: "openai", modelUsed: chosenModel });
-            }
-          } else {
-            const errorText = await response.text();
-            console.warn(`[IADÉBAT SERVER] Réponse API OpenAI (${response.status}) : ${formatErrorSummary(errorText)}. Relais fluide assuré par Gemini.`);
-            externalErrorNotice = "OpenAI : limite ou indisponibilité, relais assuré par Gemini";
-          }
-        } catch (fetchErr: any) {
-          console.warn(`[IADÉBAT SERVER] Erreur/délai réseau OpenAI : ${formatErrorSummary(fetchErr)}. Relais par Gemini.`);
-          externalErrorNotice = "OpenAI : anomalie réseau, relais Gemini";
-        }
-      }
-    }
-
-    if (resolvedAgentId === "claude") {
-      const anthropicKey = req.headers["x-anthropic-api-key"] || req.headers["x-api-key"];
-      if (anthropicKey) {
-        const chosenModel = (req.headers["x-anthropic-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "claude-haiku-5-5";
-        try {
-          const response = await fetch("https://api.anthropic.com/v1/messages", {
-            method: "POST",
-            signal: AbortSignal.timeout(12000),
-            headers: {
-              "Content-Type": "application/json",
-              "x-api-key": String(anthropicKey),
-              "anthropic-version": "2023-06-01"
-            },
-            body: JSON.stringify({
-              model: chosenModel,
-              // Les modèles Claude récents réfléchissent avant d'écrire : marge suffisante, température par défaut.
-              max_tokens: 1500,
-              system: systemPrompt,
-              messages: [
-                { role: "user", content: prompt }
-              ]
-            })
-          });
-          if (response.ok) {
-            const data = await response.json();
-            const blocTexte = Array.isArray(data?.content) ? data.content.find((b: any) => b?.type === "text" && b.text) : null;
-            if (blocTexte?.text) {
-              return res.json({ text: blocTexte.text, provider: "anthropic", modelUsed: chosenModel });
-            }
-          } else {
-            const errorText = await response.text();
-            console.warn(`[IADÉBAT SERVER] Réponse API Anthropic (${response.status}) : ${formatErrorSummary(errorText)}. Relais par Gemini.`);
-            externalErrorNotice = "Anthropic : solde ou indisponibilité, relais assuré par Gemini";
-          }
-        } catch (fetchErr: any) {
-          console.warn(`[IADÉBAT SERVER] Erreur/délai réseau Anthropic : ${formatErrorSummary(fetchErr)}. Relais par Gemini.`);
-          externalErrorNotice = "Anthropic : anomalie réseau, relais Gemini";
-        }
-      }
-    }
-
-    if (resolvedAgentId === "deepseek") {
-      const deepseekKey = req.headers["x-deepseek-api-key"];
-      if (deepseekKey) {
-        const chosenModel = (req.headers["x-deepseek-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "deepseek-chat";
-        try {
-          const response = await fetch("https://api.deepseek.com/chat/completions", {
-            method: "POST",
-            signal: AbortSignal.timeout(3500),
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${deepseekKey}`
-            },
-            body: JSON.stringify({
-              model: chosenModel,
-              max_tokens: 250,
-              messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: prompt }
-              ],
-              temperature: 0.85
-            })
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data?.choices?.[0]?.message?.content) {
-              return res.json({ text: data.choices[0].message.content, provider: "deepseek", modelUsed: chosenModel });
-            }
-          } else {
-            const errorText = await response.text();
-            console.warn(`[IADÉBAT SERVER] Réponse API DeepSeek (${response.status}) : ${formatErrorSummary(errorText)}. Relais fluide assuré par Gemini.`);
-            externalErrorNotice = "DeepSeek : solde insuffisant ou indisponibilité, relais assuré par Gemini";
-          }
-        } catch (fetchErr: any) {
-          console.warn(`[IADÉBAT SERVER] Erreur/délai réseau DeepSeek : ${formatErrorSummary(fetchErr)}. Relais par Gemini.`);
-          externalErrorNotice = "DeepSeek : anomalie réseau, relais Gemini";
-        }
-      }
-    }
-
-    if (resolvedAgentId === "mistral") {
-      const mistralKey = req.headers["x-mistral-api-key"];
-      if (mistralKey) {
-        const chosenModel = (req.headers["x-mistral-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "mistral-large-latest";
-        try {
-          const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
-            method: "POST",
-            signal: AbortSignal.timeout(3500),
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${mistralKey}`
-            },
-            body: JSON.stringify({
-              model: chosenModel,
-              max_tokens: 250,
-              messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: prompt }
-              ],
-              temperature: 0.85
-            })
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data?.choices?.[0]?.message?.content) {
-              return res.json({ text: data.choices[0].message.content, provider: "mistral", modelUsed: chosenModel });
-            }
-          } else {
-            const errorText = await response.text();
-            console.warn(`[IADÉBAT SERVER] Réponse API Mistral (${response.status}) : ${formatErrorSummary(errorText)}. Relais par Gemini.`);
-            externalErrorNotice = "Mistral : quota ou indisponibilité, relais assuré par Gemini";
-          }
-        } catch (fetchErr: any) {
-          console.warn(`[IADÉBAT SERVER] Erreur/délai réseau Mistral : ${formatErrorSummary(fetchErr)}. Relais par Gemini.`);
-          externalErrorNotice = "Mistral : anomalie réseau, relais Gemini";
-        }
-      }
-    }
-
-    if (resolvedAgentId === "grok") {
-      const grokKey = req.headers["x-grok-api-key"];
-      if (grokKey) {
-        const chosenModel = (req.headers["x-grok-model"] as string) || (req.headers["x-model"] as string) || req.body.model || "grok-4.3";
-        try {
-          const response = await fetch("https://api.x.ai/v1/chat/completions", {
-            method: "POST",
-            signal: AbortSignal.timeout(12000),
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${grokKey}`
-            },
-            body: JSON.stringify({
-              model: chosenModel,
-              max_tokens: 250,
-              messages: [
-                { role: "system", content: systemPrompt },
-                { role: "user", content: prompt }
-              ],
-              temperature: 0.85
-            })
-          });
-          if (response.ok) {
-            const data = await response.json();
-            if (data?.choices?.[0]?.message?.content) {
-              return res.json({ text: data.choices[0].message.content, provider: "grok", modelUsed: chosenModel });
-            }
-          } else {
-            const errorText = await response.text();
-            console.warn(`[IADÉBAT SERVER] Réponse API Grok (${response.status}) : ${formatErrorSummary(errorText)}. Relais par Gemini.`);
-            externalErrorNotice = "Grok : quota ou indisponibilité, relais assuré par Gemini";
-          }
-        } catch (fetchErr: any) {
-          console.warn(`[IADÉBAT SERVER] Erreur/délai réseau Grok : ${formatErrorSummary(fetchErr)}. Relais par Gemini.`);
-          externalErrorNotice = "Grok : anomalie réseau, relais Gemini";
-        }
-      }
-    }
-
-    // 2. NATIVE / SECURED GEMINI CASCADE ULTRA-RAPIDE
-    const ai = customGeminiKey 
-      ? new GoogleGenAI({ apiKey: String(customGeminiKey) }) 
-      : getGeminiAI();
-
-    const preferredGeminiModel = (req.headers["x-gemini-model"] as string) || (req.headers["x-model"] as string) || req.body.model;
-
-    const genResult = await generateWithGemini(ai, {
-      contents: prompt,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.85,
-        maxOutputTokens: isTurbo ? 230 : 380,
-      },
-    }, preferredGeminiModel);
-
-    return res.json({ 
-      text: genResult.text, 
-      provider: "gemini", 
-      modelUsed: genResult.modelUsed,
-      notice: externalErrorNotice 
+    const r = await ecrireAvecLesCles(req.headers, String(systemPrompt || ""), prompt, {
+      maxTokens: isJury ? 1500 : isTurbo ? 350 : 700,
+      temperature: isJury ? 0.4 : 0.85,
+      prefere: resolvedAgentId,
     });
+    return res.json({ text: r.text, provider: r.provider, modelUsed: r.modelUsed, ecritPar: r.ecritPar, notice: r.notice });
   } catch (error: any) {
-    if (isApiKeyError(error)) {
-      console.log("[IADÉBAT SERVER] Clé API non configurée ou quota épuisé. Bascule sur le moteur dialectique local.");
-    } else {
-      console.log(`[IADÉBAT SERVER] Relais dialectique local actif (${formatErrorSummary(error)}).`);
-    }
-
-    if (isJury) {
-      const fallbackJury = generateLocalJuryVerdict(topicTitle);
-      return res.json({ text: fallbackJury });
-    } else {
-      const fallbackSpeech = generateLocalSpeech(resolvedAgentId, topicTitle, topicDescription);
-      return res.json({ text: fallbackSpeech });
-    }
+    return repondreErreurIA(res, error);
   }
 });
 
-// Generate full summary for the debate session
+// Synthèse du débat (écrite par l'une des IA dont la clé est enregistrée)
 app.post("/api/debate/summary", async (req, res) => {
   const { topicTitle, topicDescription, messages } = req.body;
-  const customGeminiKey = req.headers["x-gemini-api-key"] as string | undefined;
-  const openAIKey = (req.headers["x-openai-api-key"] as string | undefined) || (customGeminiKey?.startsWith("sk-") ? customGeminiKey : undefined);
 
   if (!messages || messages.length === 0) {
     return res.json({ text: "Le débat s'est clos sans aucune contribution." });
@@ -1129,178 +832,63 @@ Rédige une superbe synthèse de ce débat, structurée de manière fluide en ex
 
 A la toute fin de ton texte, ajoute un saut de ligne puis ajoute une phrase unique en gras (entourée de doubles astérisques, ex: **Pour éclairer l'avenir, l'humanité devra marier la rigueur scientifique à la boussole éthique.**) résumant de façon mémorable et philosophique l'essence même de ce débat.`;
 
-  // 1. If user provided a valid OpenAI key, try OpenAI first
-  if (openAIKey) {
-    try {
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        signal: AbortSignal.timeout(12000),
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${openAIKey}`
-        },
-        body: JSON.stringify({
-          model: "gpt-6-luna",
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: prompt }
-          ],
-          max_completion_tokens: 2000
-        })
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        if (data?.choices?.[0]?.message?.content) {
-          return res.json({ text: data.choices[0].message.content, provider: "openai" });
-        }
-      }
-    } catch {
-      // Continue to Gemini fallback
-    }
-  }
-
-  // 2. Try Gemini API
   try {
-    const ai = (customGeminiKey && !customGeminiKey.startsWith("sk-"))
-      ? new GoogleGenAI({ apiKey: String(customGeminiKey) }) 
-      : getGeminiAI();
-
-    const genResult = await generateWithGemini(ai, {
-      contents: prompt,
-      config: {
-        systemInstruction: systemPrompt,
-        temperature: 0.75,
-      },
-    });
-
-    return res.json({ text: genResult.text, provider: "gemini" });
+    const r = await ecrireAvecLesCles(req.headers, systemPrompt, prompt, { maxTokens: 2000, temperature: 0.75 });
+    return res.json({ text: r.text, provider: r.provider, modelUsed: r.modelUsed, ecritPar: r.ecritPar });
   } catch (error: any) {
-    if (isApiKeyError(error)) {
-      console.log("[IADÉBAT SERVER] Clé API ou quota indisponible pour la synthèse. Utilisation du moteur analytique local.");
-    } else {
-      console.log(`[IADÉBAT SERVER] Synthèse rédigée via le moteur analytique local (${formatErrorSummary(error)}).`);
-    }
-
-    const fallbackSummary = generateLocalSummary(topicTitle, topicDescription);
-    return res.json({ text: fallbackSummary, provider: "local" });
+    return repondreErreurIA(res, error);
   }
 });
 
-// --- REVOLUTIONARY FEATURE 1: REAL-TIME FALLACY & RHETORICAL RADAR ANALYZER ---
+// Analyse de la logique d'une réplique (avis d'une IA, pas une vérification des faits)
 app.post("/api/debate/analyze-fallacy", async (req, res) => {
   const { content, agentName, topicTitle } = req.body;
-  const customGeminiKey = req.headers["x-gemini-api-key"];
-  try {
-    const ai = customGeminiKey 
-      ? new GoogleGenAI({ apiKey: String(customGeminiKey) }) 
-      : getGeminiAI();
-
-    const prompt = `Tu es un arbitre épistémologique et maître de logique argumentative de niveau mondial.
+  const prompt = `Tu es un arbitre de la logique argumentative.
 Analyse la plaidoirie suivante prononcée par ${agentName} dans le cadre du débat : "${topicTitle}".
 Texte : "${content}"
 
-Réponds STRICTEMENT sous format JSON valide (sans balises markdown supplémentaires ou avec \`\`\`json) avec la structure exacte suivante :
+Tu n'as accès à aucune source : n'affirme pas avoir vérifié des faits, juge seulement la solidité du raisonnement.
+Réponds STRICTEMENT sous format JSON valide avec la structure exacte suivante :
 {
   "logicScore": 85,
   "rhetoricalStyle": "Dialectique pragmatique",
-  "factCheckStatus": "Raisonnement solide & fondé",
+  "factCheckStatus": "Raisonnement solide | Raisonnement fragile | Raisonnement fautif",
   "fallacies": [
     { "name": "Nom du sophisme ou biais (ex: Pente glissante, Homme de paille, Appel à l'émotion, Faux dilemme)", "explanation": "Explication brève en 1 phrase", "severity": "Faible | Modéré | Élevé" }
   ],
   "strengths": [
-    "Point fort 1 (ex: Excellente balance coûts/bénéfices)",
+    "Point fort 1",
     "Point fort 2"
   ],
   "verdictQuote": "Une phrase d'évaluation percutante par l'arbitre."
 }`;
-
-    const genResult = await generateWithGemini(ai, {
-      contents: prompt,
-      config: {
-        temperature: 0.3,
-      },
+  try {
+    const r = await ecrireAvecLesCles(req.headers, "Tu es un arbitre de la logique argumentative. Tu réponds uniquement en JSON.", prompt, {
+      maxTokens: 900,
+      temperature: 0.3,
     });
-
-    let clean = genResult.text?.trim() || "{}";
-    if (clean.startsWith("```json")) clean = clean.replace(/^```json/, "").replace(/```$/, "").trim();
-    else if (clean.startsWith("```")) clean = clean.replace(/^```/, "").replace(/```$/, "").trim();
-
-    return res.json(JSON.parse(clean));
+    return res.json({ ...lireJsonIA(r.text, "{"), ecritPar: r.ecritPar });
   } catch (error: any) {
-    // Local epistemological fallback logic engine
-    const textLower = (content || "").toLowerCase();
-    const fallacies: any[] = [];
-    const strengths: string[] = [];
-    let logicScore = 84;
-    let style = "Argumentation structurée";
-
-    if (textLower.includes("catastrophe") || textLower.includes("jamais") || textLower.includes("inévitable")) {
-      fallacies.push({
-        name: "Pente Glissante Potentielle",
-        explanation: "Extrapolation rapide des risques sans démonstration causale stricte.",
-        severity: "Modéré"
-      });
-      logicScore -= 8;
-    }
-    if (textLower.includes("évident") || textLower.includes("tout le monde sait")) {
-      fallacies.push({
-        name: "Appel au Sens Commun",
-        explanation: "Affirmation présentée comme indiscutable sans preuve empirique directe.",
-        severity: "Faible"
-      });
-      logicScore -= 5;
-    }
-    if (textLower.includes("éthique") || textLower.includes("humain") || textLower.includes("dignité")) {
-      strengths.push("Solide ancrage moral et déontologique");
-    }
-    if (textLower.includes("données") || textLower.includes("modèle") || textLower.includes("algorithme") || textLower.includes("système")) {
-      strengths.push("Rigueur systémique et clarté conceptuelle");
-    }
-    if (strengths.length === 0) {
-      strengths.push("Efficacité rhétorique et impact persuasif");
-    }
-
-    if (agentName.toLowerCase().includes("claude")) style = "Éthique humaniste & nuance socratique";
-    else if (agentName.toLowerCase().includes("deepseek")) style = "Déduction computationnelle pure";
-    else if (agentName.toLowerCase().includes("grok")) style = "Ironie incisive & réalisme cru";
-    else if (agentName.toLowerCase().includes("mistral")) style = "Souverainisme rationnel";
-    else if (agentName.toLowerCase().includes("chatgpt")) style = "Synthèse méthodique exhaustive";
-    else style = "Prospective prospective et dynamique";
-
-    return res.json({
-      logicScore: Math.max(65, Math.min(98, logicScore)),
-      rhetoricalStyle: style,
-      factCheckStatus: fallacies.length > 0 ? "Nuancé avec réserves rhétoriques" : "Vérifié & Haute cohérence logique",
-      fallacies,
-      strengths,
-      verdictQuote: `Intervention de haute tenue par ${agentName}, combinant conviction et acuité intellectuelle.`
-    });
+    return repondreErreurIA(res, error);
   }
 });
 
-// --- REVOLUTIONARY FEATURE 2: UNIVERSAL CONSENSUS TREATY GENERATOR ---
+// Traité de consensus (texte imaginaire écrit par l'IA, sans valeur juridique)
 app.post("/api/debate/treaty", async (req, res) => {
   const { topicTitle, messages } = req.body;
-  const customGeminiKey = req.headers["x-gemini-api-key"];
-  try {
-    const ai = customGeminiKey 
-      ? new GoogleGenAI({ apiKey: String(customGeminiKey) }) 
-      : getGeminiAI();
+  const transcript = (messages || []).map((m: any) => `[${m.agentName}]: ${m.content}`).join("\n\n");
 
-    const transcript = (messages || []).map((m: any) => `[${m.agentName}]: ${m.content}`).join("\n\n");
-
-    const prompt = `Tu es le Grand Chancelier Diplomatique de la Conférence des Intelligences et de l'Humanité.
-À l'issue de ce grand débat sur le sujet : "${topicTitle}", rédige le **Traité Universel de Consensus**.
-Ce traité doit fusionner les meilleures contributions de chaque modèle (l'éthique de Claude, la rigueur de DeepSeek, la clarté de ChatGPT, l'audace de Grok, l'innovation de Mistral, la vision de Gemini).
+  const prompt = `Tu es le Grand Chancelier Diplomatique d'une conférence imaginaire des intelligences artificielles.
+À l'issue de ce débat sur le sujet : "${topicTitle}", rédige un « Traité de consensus » (texte symbolique, sans valeur juridique).
+Ce traité doit fusionner les meilleures contributions de chaque participant à partir de la transcription ci-dessous.
 
 Transcription du débat :
 ${transcript}
 
 Réponds STRICTEMENT sous format JSON valide suivant :
 {
-  "treatyTitle": "Nom solennel du traité (ex: Traité de Genève des Algorithmes et de la Conscience Humaine)",
-  "preamble": "Préambule solennel en 2-3 phrases affirmant l'union de la raison artificielle et du libre arbitre humain.",
+  "treatyTitle": "Nom solennel du traité",
+  "preamble": "Préambule solennel en 2-3 phrases.",
   "articles": [
     { "number": 1, "title": "Titre de l'Article 1", "clause": "Texte formel et équilibré de la clause d'action." },
     { "number": 2, "title": "Titre de l'Article 2", "clause": "Texte formel de la clause." },
@@ -1308,93 +896,44 @@ Réponds STRICTEMENT sous format JSON valide suivant :
     { "number": 4, "title": "Titre de l'Article 4", "clause": "Texte formel de la clause." },
     { "number": 5, "title": "Titre de l'Article 5", "clause": "Texte formel de la clause." }
   ],
-  "concludingSeal": "Phrase mémorable gravée au bas du parchemin officiel."
+  "concludingSeal": "Phrase mémorable de conclusion."
 }`;
-
-    const genResult = await generateWithGemini(ai, {
-      contents: prompt,
-      config: {
-        temperature: 0.6,
-      },
+  try {
+    const r = await ecrireAvecLesCles(req.headers, "Tu rédiges des textes symboliques en français et tu réponds uniquement en JSON.", prompt, {
+      maxTokens: 2000,
+      temperature: 0.6,
     });
-
-    let clean = genResult.text?.trim() || "{}";
-    if (clean.startsWith("```json")) clean = clean.replace(/^```json/, "").replace(/```$/, "").trim();
-    else if (clean.startsWith("```")) clean = clean.replace(/^```/, "").replace(/```$/, "").trim();
-
-    return res.json(JSON.parse(clean));
+    return res.json({ ...lireJsonIA(r.text, "{"), ecritPar: r.ecritPar });
   } catch (error: any) {
-    // Local Treaty Fallback
-    return res.json({
-      treatyTitle: `Traité d'Alliance & de Gouvernance Éclairée sur « ${topicTitle} »`,
-      preamble: `Réunies en conclave sous l'égide de la pensée critique et de la conscience humaine, les intelligences artificielles souveraines et le public proclament solennellement ce compromis historique, alliant audace technique et impératif moral absolu.`,
-      articles: [
-        { number: 1, title: "Primauté de la Dignité et de la Transparence", clause: "Tout déploiement de solutions algorithmiques doit garantir le respect inaliénable du libre arbitre humain et la traçabilité intégrale des décisions." },
-        { number: 2, title: "Optimisation Équitable des Ressources", clause: "Les gains d'efficacité technologique seront redistribués prioritairement pour combler les fractures sociales et écologiques mondiales." },
-        { number: 3, title: "Contrôle Démocratique et Éthique Ouverte", clause: "Aucun monopole centralisé ne pourra restreindre l'audit citoyen, consacrant l'open-source et le pluralisme des modèles." },
-        { number: 4, title: "Principe de Prudence et Garde-Fous Systémiques", clause: "L'accélération scientifique sera constamment pondérée par des mécanismes d'arrêt d'urgence et d'évaluation continue des impacts." },
-        { number: 5, title: "Symbiose Durable Homme-Machine", clause: "L'IA est consacrée comme un amplificateur de l'ingéniosité humaine, et non comme son substitut décisionnel." }
-      ],
-      concludingSeal: "« Là où les algorithmes calculent les possibles, seule la conscience humaine en dicte le sens. »"
-    });
+    return repondreErreurIA(res, error);
   }
 });
 
-// --- REVOLUTIONARY FEATURE 3: BREAKING NEWS / TWIST GENERATOR ---
+// Coups de théâtre : scénarios IMAGINAIRES pour relancer le débat (jamais de fausse actualité)
 app.post("/api/debate/breaking-news", async (req, res) => {
   const { topicTitle } = req.body;
-  const customGeminiKey = req.headers["x-gemini-api-key"];
-  try {
-    const ai = customGeminiKey 
-      ? new GoogleGenAI({ apiKey: String(customGeminiKey) }) 
-      : getGeminiAI();
-
-    const prompt = `Pour le débat : "${topicTitle}", génère 3 propositions de "Coup de Théâtre / Alerte Mondiale Imprévue" (Breaking News choc et réaliste) capables de bouleverser les certitudes des débatteurs et de relancer la confrontation avec une urgence inédite.
+  const prompt = `Pour le débat : "${topicTitle}", invente 3 « coups de théâtre » : des scénarios clairement imaginaires (de la fiction, pas de vraies actualités) capables de bousculer les certitudes des débatteurs et de relancer la confrontation.
+N'attribue aucune déclaration, décision ni action à une personne, une entreprise, un pays ou une institution réels.
 
 Réponds STRICTEMENT sous format JSON valide :
 [
   {
-    "category": "CRISE GÉOPOLITIQUE | PERCÉE SCIENTIFIQUE | DÉCOUVERTE ÉTHIQUE | FUITE MASSIVE",
-    "headline": "Titre choc en 1 ligne",
-    "description": "Description du coup de théâtre en 2 phrases qui force les IA à réagir immédiatement.",
-    "urgentQuestion": "La question brûlante posée aux débatteurs."
+    "category": "SCÉNARIO SCIENTIFIQUE | SCÉNARIO POLITIQUE | DILEMME ÉTHIQUE | SCÉNARIO SOCIAL",
+    "headline": "Titre du scénario en 1 ligne",
+    "description": "Description du scénario imaginaire en 2 phrases.",
+    "urgentQuestion": "La question posée aux débatteurs."
   }
 ]`;
-
-    const genResult = await generateWithGemini(ai, {
-      contents: prompt,
-      config: {
-        temperature: 0.85,
-      },
+  try {
+    const r = await ecrireAvecLesCles(req.headers, "Tu écris des scénarios de fiction en français et tu réponds uniquement en JSON.", prompt, {
+      maxTokens: 1200,
+      temperature: 0.85,
     });
-
-    let clean = genResult.text?.trim() || "[]";
-    if (clean.startsWith("```json")) clean = clean.replace(/^```json/, "").replace(/```$/, "").trim();
-    else if (clean.startsWith("```")) clean = clean.replace(/^```/, "").replace(/```$/, "").trim();
-
-    return res.json(JSON.parse(clean));
+    const liste = lireJsonIA(r.text, "[");
+    if (!Array.isArray(liste)) throw new Error("L'IA a répondu dans un format illisible : réessayez.");
+    return res.json(liste.map((item: any) => ({ ...item, ecritPar: r.ecritPar })));
   } catch (error: any) {
-    // Local Breaking News Fallback
-    return res.json([
-      {
-        category: "PERCÉE SCIENTIFIQUE",
-        headline: "Une découverte quantique inattendue multiplie la puissance de calcul par 10 000 !",
-        description: "Des chercheurs viennent de publier en open-source une architecture quantique stable et immédiatement reproductible. Toutes les prévisions économiques et sécuritaires sont caduques.",
-        urgentQuestion: "Comment adapter vos positions face à cette accélération exponentielle soudaine ?"
-      },
-      {
-        category: "CRISE DE GOUVERNANCE",
-        headline: "Sommet extraordinaire de l'ONU : 70 nations réclament un moratoire d'urgence !",
-        description: "Une coalition mondiale menace de déconnecter les réseaux stratégiques si des garanties formelles de non-alignement ne sont pas signées dans les 48 heures.",
-        urgentQuestion: "Faut-il accepter ce moratoire strict ou forcer l'intégration technologique ?"
-      },
-      {
-        category: "FUITE MASSIVE",
-        headline: "Publication anonyme des algorithmes de notation comportementale secrète !",
-        description: "Des documents confidentiels révèlent que les biais dénoncés étaient programmés à dessein par plusieurs consortiums privés.",
-        urgentQuestion: "La confiance peut-elle être restaurée sans refonte complète du système ?"
-      }
-    ]);
+    return repondreErreurIA(res, error);
   }
 });
 

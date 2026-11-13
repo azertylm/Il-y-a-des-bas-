@@ -15,6 +15,8 @@ interface TreatyData {
   preamble: string;
   articles: Article[];
   concludingSeal: string;
+  /** IA qui a vraiment écrit le texte. */
+  ecritPar?: string;
 }
 
 interface UniversalTreatyModalProps {
@@ -34,6 +36,7 @@ export function UniversalTreatyModal({
 }: UniversalTreatyModalProps) {
   const [data, setData] = useState<TreatyData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const [isSavingToDrive, setIsSavingToDrive] = useState(false);
@@ -58,14 +61,14 @@ export function UniversalTreatyModal({
 
       let content = `# 📜 ${data.treatyTitle}\n\n`;
       content += `**Thème débattu :** ${topicTitle}\n`;
-      content += `**Date de promulgation :** ${new Date().toLocaleString('fr-FR')}\n\n`;
+      content += `**Rédigé le :** ${new Date().toLocaleString('fr-FR')} par ${data.ecritPar || 'une IA'} (texte imaginaire, sans valeur juridique)\n\n`;
       content += `## PRÉAMBULE & FONDEMENTS\n\n${data.preamble}\n\n`;
       content += `## ARTICLES DE L'ACCORD\n\n`;
       data.articles.forEach((art) => {
         content += `### Article ${art.number} — ${art.title}\n\n${art.clause}\n\n`;
       });
-      content += `## SCEAU OFFICIEL & PROMULGATION\n\n${data.concludingSeal}\n\n`;
-      content += `\n*Traité universel rédigé et scellé dans l'Agora IADÉBAT.*\n`;
+      content += `## CONCLUSION\n\n${data.concludingSeal}\n\n`;
+      content += `\n*Texte imaginaire rédigé par une IA dans IA Débat. Personne ne l'a signé.*\n`;
 
       const folderId = await getOrCreateIadebatFolder(token);
       await uploadTextFileToDrive({
@@ -88,6 +91,7 @@ export function UniversalTreatyModal({
 
   const fetchTreaty = async () => {
     setLoading(true);
+    setErreur(null);
     try {
       const res = await fetch("/api/debate/treaty", {
         method: "POST",
@@ -99,10 +103,14 @@ export function UniversalTreatyModal({
       });
       if (res.ok) {
         const treaty = await res.json();
-        setData(treaty);
+        setData({ ...treaty, articles: Array.isArray(treaty?.articles) ? treaty.articles : [] });
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setErreur(err.error || "L'IA n'a pas pu rédiger le traité.");
       }
     } catch (e) {
       console.warn("Erreur lors de la rédaction du traité:", e);
+      setErreur("L'IA n'a pas pu rédiger le traité.");
     } finally {
       setLoading(false);
     }
@@ -127,8 +135,10 @@ ${data.preamble}
 ## ARTICLES DU TRAITÉ
 ${data.articles.map(a => `### Article ${a.number} : ${a.title}\n${a.clause}`).join("\n\n")}
 
-## SCEAU DE RATIFICATION
+## CONCLUSION
 ${data.concludingSeal}
+
+(Texte imaginaire écrit par ${data.ecritPar || "une IA"}, sans valeur juridique.)
 
 Signataires : ChatGPT • Claude • Gemini • DeepSeek • Mistral • Grok • Public Citoyen`;
 
@@ -189,12 +199,14 @@ Signataires : ChatGPT • Claude • Gemini • DeepSeek • Mistral • Grok �
               Harmonisation des thèses et rédaction du traité en cours...
             </span>
           </div>
+        ) : erreur && !data ? (
+          <div className="p-4 m-2 rounded-xl bg-red-500/10 border border-red-500/30 text-sm text-red-200 leading-relaxed">{erreur}</div>
         ) : data ? (
           <div className="flex-1 overflow-y-auto space-y-6 pr-2 text-gray-300">
             {/* Title & Preamble */}
             <div className="text-center space-y-3 bg-amber-500/[0.04] border border-amber-500/20 p-5 rounded-xl">
               <div className="text-[10px] font-mono uppercase tracking-widest text-amber-400/80">
-                RATIFICATION SOLENNELLE DES INTELLIGENCES MULTIPLES
+                TEXTE IMAGINAIRE {data.ecritPar ? `ÉCRIT PAR ${data.ecritPar.toUpperCase()}` : "ÉCRIT PAR UNE IA"} · SANS VALEUR JURIDIQUE
               </div>
               <h2 className="text-xl md:text-2xl font-black font-condensed tracking-wide text-white uppercase">
                 {data.treatyTitle}
@@ -236,22 +248,15 @@ Signataires : ChatGPT • Claude • Gemini • DeepSeek • Mistral • Grok �
             <div className="p-4 rounded-xl bg-gradient-to-r from-amber-500/10 via-black/40 to-emerald-500/10 border border-amber-500/30 text-center space-y-2">
               <div className="flex items-center justify-center gap-2 text-amber-400 text-xs font-bold uppercase tracking-widest font-condensed">
                 <Award className="w-4 h-4" />
-                Sceau d'Authenticité du Grand Conclave
+                Conclusion
               </div>
               <p className="text-xs md:text-sm font-semibold text-white italic">
                 {data.concludingSeal}
               </p>
 
-              {/* Signatures badges */}
-              <div className="flex flex-wrap items-center justify-center gap-2 pt-2 border-t border-white/[0.08]">
-                {["ChatGPT", "Claude", "Gemini", "DeepSeek", "Mistral", "Grok", "Citoyen Humain"].map((sig, i) => (
-                  <span
-                    key={i}
-                    className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-white/[0.04] border border-white/[0.08] text-gray-300"
-                  >
-                    ✓ {sig}
-                  </span>
-                ))}
+              {/* Honnêteté : pas de fausses signatures, une seule IA a écrit ce texte */}
+              <div className="text-[10px] text-gray-400 pt-2 border-t border-white/[0.08]">
+                Rédigé par {data.ecritPar || "une IA"} à partir des répliques du débat. Personne ne l'a signé.
               </div>
             </div>
           </div>

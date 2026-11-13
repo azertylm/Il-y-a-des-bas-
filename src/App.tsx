@@ -81,7 +81,7 @@ import {
   ALPHABETTE_FOOTER_TEXT
 } from "./utils/alphabetteAuth";
 import { checkAndUpdateQuota, QuotaStatus } from "./utils/alphabetteQuota";
-import { lireMembre } from "./utils/membreAlphabette";
+import { lireMembre, lienInscription } from "./utils/membreAlphabette";
 
 // ─── THÈMES TEMPORELS PAR DÉFAUT ─────────────────────────────────────────────
 const DEFAULT_TOPICS: Topic[] = [
@@ -240,12 +240,12 @@ export default function AIDebate() {
   const [userContribution, setUserContribution] = useState("");
   const [isSubmittingUserContribution, setIsSubmittingUserContribution] = useState(false);
 
-  // Simulated metrics
+  // Part de parole de chaque groupe d'IA (répliques + applaudissements), en %
   const [opinionMetrics, setOpinionMetrics] = useState({
-    rigueur: 50,
-    ethique: 50,
-    pragmatisme: 50,
-    culture: 50,
+    rigueur: 0,
+    ethique: 0,
+    pragmatisme: 0,
+    culture: 0,
   });
 
   // --- MODALS RÉVOLUTIONNAIRES ---
@@ -281,12 +281,6 @@ export default function AIDebate() {
     quotaExhausted: false,
     todayKey: ""
   });
-
-  useEffect(() => {
-    checkAndUpdateQuota(alphabetteAccount, false).then(status => {
-      setQuotaStatus(status);
-    });
-  }, [alphabetteAccount]);
 
   // Synchronisation inter-applications ALPHABETTE (BroadcastChannel & storage)
   useEffect(() => {
@@ -341,13 +335,13 @@ export default function AIDebate() {
     const twistMsg: Message = {
       id: `twist-${Date.now()}`,
       agentId: "system-twist",
-      agentName: "FLASH INFO / COUP DE THÉÂTRE",
-      agentRole: "Événement Imprévu Majeur",
+      agentName: "COUP DE THÉÂTRE (FICTION)",
+      agentRole: "Scénario imaginaire, pas une vraie actualité",
       agentColor: "#ef4444",
       agentDim: "rgba(239, 68, 68, 0.12)",
       agentBorder: "rgba(239, 68, 68, 0.4)",
       agentSymbol: "🚨",
-      content: `🚨 **COUP DE THÉÂTRE : ${headline.toUpperCase()}**\n\n${description}\n\n👉 **Question urgente imposée aux débatteurs :** *${question}*`,
+      content: `🚨 **COUP DE THÉÂTRE IMAGINAIRE (fiction) : ${headline.toUpperCase()}**\n\n${description}\n\n👉 **Question posée aux débatteurs :** *${question}*`,
       time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
       isUser: false,
       claps: 0,
@@ -422,6 +416,14 @@ export default function AIDebate() {
   };
 
   const activeKeysCount = Object.values(apiKeys).filter((k): k is string => typeof k === "string" && k.trim().length > 0).length;
+  // Clé Mistral enregistrée dans un ancien « compte Alphabette » local : elle sert aussi.
+  const aDesClesIA = activeKeysCount > 0 || Boolean(alphabetteAccount?.mistralApiKey?.trim());
+
+  useEffect(() => {
+    checkAndUpdateQuota(alphabetteAccount, false, aDesClesIA).then(status => {
+      setQuotaStatus(status);
+    });
+  }, [alphabetteAccount, aDesClesIA]);
 
   // --- AFFICHAGE / MASQUAGE DES MODULES LATÉRAUX ---
   // Permet de masquer la configuration du thème, le réglage des retenues & tonalités, la boussole et le vote du public pour accéder directement au débat
@@ -592,7 +594,8 @@ export default function AIDebate() {
     if (apiKeys.claude) headers["x-anthropic-api-key"] = apiKeys.claude;
     if (apiKeys.gemini) headers["x-gemini-api-key"] = apiKeys.gemini;
     if (apiKeys.deepseek) headers["x-deepseek-api-key"] = apiKeys.deepseek;
-    if (apiKeys.mistral) headers["x-mistral-api-key"] = apiKeys.mistral;
+    const cleMistral = apiKeys.mistral || alphabetteAccount?.mistralApiKey || "";
+    if (cleMistral) headers["x-mistral-api-key"] = cleMistral;
     if (apiKeys.grok) headers["x-grok-api-key"] = apiKeys.grok;
 
     if (apiModels.chatgpt) headers["x-openai-model"] = apiModels.chatgpt;
@@ -603,7 +606,7 @@ export default function AIDebate() {
     if (apiModels.grok) headers["x-grok-model"] = apiModels.grok;
 
     return headers;
-  }, [apiKeys, apiModels]);
+  }, [apiKeys, apiModels, alphabetteAccount]);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -850,23 +853,25 @@ export default function AIDebate() {
     messagesRef.current = messages;
     // Ajuster dynamiquement les métriques d'opinion basées sur le profil des derniers messages
     if (messages.length > 0) {
-      const counts = { rigueur: 50, ethique: 50, pragmatisme: 50, culture: 50 };
+      // Part de chaque groupe dans le débat : 1 point par réplique + 1 par applaudissement.
+      // (Un simple compte, pas une mesure de la qualité des arguments.)
+      const counts = { rigueur: 0, ethique: 0, pragmatisme: 0, culture: 0 };
       messages.forEach(m => {
-        const factor = 10 + (m.claps || 0);
-        if (m.agentId === "chatgpt" || m.agentId === "gemini") counts.rigueur = Math.min(100, counts.rigueur + factor);
-        if (m.agentId === "claude") counts.ethique = Math.min(100, counts.ethique + factor);
-        if (m.agentId === "deepseek") counts.pragmatisme = Math.min(100, counts.pragmatisme + factor);
-        if (m.agentId === "mistral" || m.agentId === "grok") counts.culture = Math.min(100, counts.culture + factor);
+        const factor = 1 + (m.claps || 0);
+        if (m.agentId === "chatgpt" || m.agentId === "gemini") counts.rigueur += factor;
+        if (m.agentId === "claude") counts.ethique += factor;
+        if (m.agentId === "deepseek") counts.pragmatisme += factor;
+        if (m.agentId === "mistral" || m.agentId === "grok") counts.culture += factor;
       });
-      // Normaliser
+      const total = Math.max(1, counts.rigueur + counts.ethique + counts.pragmatisme + counts.culture);
       setOpinionMetrics({
-        rigueur: Math.round(counts.rigueur),
-        ethique: Math.round(counts.ethique),
-        pragmatisme: Math.round(counts.pragmatisme),
-        culture: Math.round(counts.culture),
+        rigueur: Math.round((100 * counts.rigueur) / total),
+        ethique: Math.round((100 * counts.ethique) / total),
+        pragmatisme: Math.round((100 * counts.pragmatisme) / total),
+        culture: Math.round((100 * counts.culture) / total),
       });
     } else {
-      setOpinionMetrics({ rigueur: 50, ethique: 50, pragmatisme: 50, culture: 50 });
+      setOpinionMetrics({ rigueur: 0, ethique: 0, pragmatisme: 0, culture: 0 });
     }
   }, [messages]);
 
@@ -992,7 +997,8 @@ export default function AIDebate() {
         }
 
         const data = await res.json();
-        sumText = data.text;
+        // Honnêteté : la synthèse dit quelle IA l'a écrite.
+        sumText = data.ecritPar ? `${data.text}\n\n— Synthèse écrite par ${data.ecritPar}.` : data.text;
         setSummary(sumText);
 
         // 2. Délibération et attribution des points uniques façon "Grand Jury" par Gemini
@@ -1063,10 +1069,12 @@ export default function AIDebate() {
           if (firstBrace !== -1 && lastBrace !== -1) {
             cleanText = cleanText.substring(firstBrace, lastBrace + 1);
           }
-          finalVerdict = JSON.parse(cleanText);
+          const lu = JSON.parse(cleanText);
+          // Honnêteté : le verdict dit quelle IA l'a rendu (c'est un avis d'IA, pas un jury humain).
+          finalVerdict = lu ? { ...lu, agentScores: lu.agentScores || {}, agentBadges: lu.agentBadges || {}, ecritPar: juryData.ecritPar } : undefined;
           setVerdict(finalVerdict || null);
         } catch (e) {
-          console.warn("Erreur de parsing du verdict JSON de l'IA Judge, construction d'un repli analytique actif.", e);
+          console.warn("Verdict de l'IA illisible : aucun verdict n'est affiché.", e);
         }
       } else {
         sumText = "Le débat s'est achevé sans aucune plaidoirie de part et d'autre.";
@@ -1074,7 +1082,7 @@ export default function AIDebate() {
       }
     } catch (e: any) {
       console.warn("[IADÉBAT CLIENT] Retard lors de la synthèse :", e?.message || e);
-      sumText = "La synthèse prospective et les analyses du jury sont temporairement inaccessibles en raison d'un conflit réseau.";
+      sumText = `Synthèse et verdict non rédigés : ${e?.message || "l'IA n'a pas répondu."}`;
       setSummary(sumText);
       setErrorMessage(e?.message || "Erreur de traitement des données de synthèse.");
     }
@@ -1191,6 +1199,14 @@ export default function AIDebate() {
       return;
     }
 
+    // Sans aucune clé, aucune IA ne peut parler : on le dit, on n'invente rien.
+    if (!aDesClesIA) {
+      setErrorMessage("Ajoutez votre clé dans Clé API (bouton « Clés API » en haut de la page) : sans clé, aucune IA ne peut répondre.");
+      setPhase(messagesRef.current.length > 0 ? "paused" : "idle");
+      setIsApiKeysModalOpen(true);
+      return;
+    }
+
     for (let i = 0; i < activeAgents.length; i++) {
       if (stopRequested.current) break;
       const agent = activeAgents[i];
@@ -1219,7 +1235,7 @@ export default function AIDebate() {
       }
 
       try {
-        const quotaRes = await checkAndUpdateQuota(alphabetteAccount, true);
+        const quotaRes = await checkAndUpdateQuota(alphabetteAccount, true, aDesClesIA);
         setQuotaStatus(quotaRes);
         if (quotaRes.quotaExhausted) {
           setIsQuotaExceededModalOpen(true);
@@ -1242,7 +1258,9 @@ export default function AIDebate() {
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({}));
-          throw new Error(err.error || `Erreur de traitement sur le modèle d'${agent.name}`);
+          const erreur: any = new Error(err.error || `Erreur de traitement sur le modèle d'${agent.name}`);
+          erreur.sansCle = Boolean(err.sansCle);
+          throw erreur;
         }
 
         const data = await res.json();
@@ -1281,9 +1299,16 @@ export default function AIDebate() {
           setZenActiveIndex(messagesRef.current.length - 1);
         }
       } catch (e: any) { 
-        console.warn(`[IADÉBAT CLIENT] Défaillance passagère de ${agent.name} :`, e?.message || e);
-        setErrorMessage(`Défaillance réseau passagère de ${agent.name}. La parole passe au décodeur suivant.`);
-        setTimeout(() => setErrorMessage(null), 3000);
+        console.warn(`[IADÉBAT CLIENT] ${agent.name} n'a pas répondu :`, e?.message || e);
+        if (e?.sansCle) {
+          // Plus aucune clé : on s'arrête et on le dit (aucune réplique inventée).
+          setErrorMessage(e.message);
+          setLoadingAgent(null);
+          setPhase("paused");
+          return;
+        }
+        setErrorMessage(`${agent.name} n'a pas pu parler : ${e?.message || "erreur inconnue"}. La parole passe à l'IA suivante.`);
+        setTimeout(() => setErrorMessage(null), 6000);
         setLoadingAgent(null);
         await new Promise(r => setTimeout(r, 200));
         continue;
@@ -1298,7 +1323,7 @@ export default function AIDebate() {
     
     setRoundCount(n => n + 1);
     setPhase("paused");
-  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength, isTurboSpeed, getHeaders, waitForReading]);
+  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength, isTurboSpeed, getHeaders, waitForReading, aDesClesIA, alphabetteAccount]);
 
   // Sélectionne les agents actifs en désignant un premier orateur aléatoire (jamais forcé sur ChatGPT)
   const getRandomizedActiveAgents = useCallback((avoidFirstId?: string | null) => {
@@ -1461,7 +1486,10 @@ export default function AIDebate() {
       <AlphabetteTopNav
         account={alphabetteAccount}
         quotaInfo={{ ...quotaStatus, isMembre: quotaStatus.isMembre || Boolean(membreAlphabette) }}
-        onOpenAccount={() => setIsAccountModalOpen(true)}
+        onOpenAccount={() => {
+          if (alphabetteAccount) setIsAccountModalOpen(true);
+          else window.location.href = membreAlphabette ? "https://alphabette.fr/inscription/" : lienInscription();
+        }}
         onOpenApiKeys={() => setIsApiKeysModalOpen(true)}
         onOpenSubscription={() => setIsSubscriptionModalOpen(true)}
       />
@@ -1621,19 +1649,13 @@ export default function AIDebate() {
           {alphabetteAccount ? (
             <button
               onClick={() => setIsAccountModalOpen(true)}
-              title={`Compte ALPHABETTE Souverain Actif : ${alphabetteAccount.name} (${alphabetteAccount.planTitle}) - Cliquer pour gérer`}
+              title={`Compte enregistré sur cet appareil : ${alphabetteAccount.name} - Cliquer pour le voir`}
               className="flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0"
             >
               <span className={`w-2 h-2 rounded-full shrink-0 ${alphabetteAccount.isTrialActive ? "bg-amber-400 animate-pulse" : "bg-emerald-400 animate-pulse"}`} />
               <span className="hidden sm:inline font-mono">{alphabetteAccount.name.split(" ")[0]}</span>
-              <span className={`text-[10px] font-mono px-1.5 py-0.2 rounded font-bold border ${
-                alphabetteAccount.isTrialActive 
-                  ? "bg-amber-400/20 text-amber-300 border-amber-400/30" 
-                  : "bg-emerald-400/20 text-emerald-300 border-emerald-400/30"
-              }`}>
-                {alphabetteAccount.isTrialActive 
-                  ? `Essai ${getTrialDaysRemaining(alphabetteAccount)}j`
-                  : `${alphabetteAccount.priceAnnualEur || 15}€/an`}
+              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded font-bold border bg-white/10 text-gray-300 border-white/20">
+                compte local
               </span>
             </button>
           ) : membreAlphabette ? (
@@ -1647,18 +1669,14 @@ export default function AIDebate() {
               <span className="text-[10px] font-mono px-1.5 py-0.2 rounded font-bold border bg-emerald-400/20 text-emerald-300 border-emerald-400/30">Accès offert</span>
             </a>
           ) : (
-            <button
-              onClick={() => setIsAccountModalOpen(true)}
-              title="Créer un compte unifié ALPHABETTE - 7 jours d'essai offerts (Mistral AI Exclusif)"
+            <a
+              href={lienInscription()}
+              title="Inscription Alphabette avec un code d'invitation (gratuite)"
               className="flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border border-[#00f5c4]/40 bg-[#00f5c4]/10 hover:bg-[#00f5c4]/20 text-[#00f5c4] font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0"
             >
               <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-              <span className="hidden sm:inline">Compte ALPHABETTE</span>
-              <span className="sm:hidden">Compte</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-amber-400/20 text-amber-300 font-bold border border-amber-400/30">
-                7j offerts
-              </span>
-            </button>
+              <span>S'inscrire</span>
+            </a>
           )}
 
           {/* BOUTON GRILLE TARIFAIRE OFFICIELLE & BOUQUET */}
@@ -1719,7 +1737,7 @@ export default function AIDebate() {
         <div className="bg-red-950/80 border-b border-red-500/30 px-3 py-1.5 flex items-center justify-between gap-2 text-xs text-red-200 z-40 relative animate-fadeSlideUp shrink-0">
           <div className="flex items-center gap-1.5 min-w-0 flex-1">
             <ShieldAlert className="w-4 h-4 text-red-400 shrink-0" />
-            <span className="truncate">{errorMessage}</span>
+            <span className="break-words">{errorMessage}</span>
           </div>
           <button 
             onClick={() => setErrorMessage(null)} 
@@ -1812,9 +1830,9 @@ export default function AIDebate() {
                   >
                     <span className="font-condensed font-bold text-xs text-white uppercase tracking-wider flex items-center gap-1">
                       <Wand2 className="w-3 h-3 text-purple-400" />
-                      Générateur Éthique Gemini
+                      Générateur de sujets par l'IA
                     </span>
-                    <span className="text-[10px] text-gray-500">Élaborez des controverses d'un clic grâce à l'IA.</span>
+                    <span className="text-[10px] text-gray-500">Des sujets proposés par l'IA de votre clé.</span>
                   </button>
                 </div>
               </div>
@@ -2047,7 +2065,7 @@ export default function AIDebate() {
                 {showApiKeys && (
                   <div className="flex flex-col gap-3.5 mt-1 animate-fadeSlideUp">
                     <p className="text-[10px] text-gray-400 leading-normal">
-                      Renseignez vos clés API personnelles. En leur absence, c’est Gemini qui écrit à la place de chaque orateur, en imitant son style : chaque réplique l’indique.
+                      Renseignez au moins une clé API personnelle : sans clé, aucune IA ne peut répondre. Un orateur sans clé est écrit par une autre IA dont la clé est enregistrée, en imitant son style : chaque réplique l’indique. Les clés restent dans ce navigateur et ne partent que chez le fournisseur d’IA concerné.
                     </p>
                     
                     {[
@@ -2081,7 +2099,7 @@ export default function AIDebate() {
                               </span>
                             ) : (
                               <span className="text-[9px] text-gray-600 font-normal">
-                                (Secours Gemini)
+                                (écrit par une autre IA)
                               </span>
                             )}
                           </div>
@@ -2154,14 +2172,14 @@ export default function AIDebate() {
                 <div className="border border-white/[0.05] rounded-xl bg-[#090909]/60 p-4">
                   <h3 className="font-condensed font-bold text-xs tracking-wider uppercase text-gray-400 mb-3 flex items-center gap-1.5">
                     <Scale className="w-3.5 h-3.5 text-[#00f5c4]" />
-                    ÉQUILIBRE ET VIBRANCE DU DÉBAT
+                    TEMPS DE PAROLE (RÉPLIQUES + APPLAUDISSEMENTS)
                   </h3>
                   
                   <div className="flex flex-col gap-2">
                     {/* Gauge 1: Rigueur */}
                     <div>
                       <div className="flex justify-between text-[9px] font-bold text-gray-500 mb-0.5">
-                        <span>RIGUEUR SCIENTIFIQUE (ChatGPT & Gemini)</span>
+                        <span>ChatGPT & Gemini</span>
                         <span className="text-[#10a37f]">{opinionMetrics.rigueur}%</span>
                       </div>
                       <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -2171,7 +2189,7 @@ export default function AIDebate() {
                     {/* Gauge 2: Éthique */}
                     <div>
                       <div className="flex justify-between text-[9px] font-bold text-gray-500 mb-0.5">
-                        <span>HAUTEUR ÉTHIQUE & SENSE (Claude)</span>
+                        <span>Claude</span>
                         <span className="text-[#d97706]">{opinionMetrics.ethique}%</span>
                       </div>
                       <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -2181,7 +2199,7 @@ export default function AIDebate() {
                     {/* Gauge 3: Action */}
                     <div>
                       <div className="flex justify-between text-[9px] font-bold text-gray-500 mb-0.5">
-                        <span>PRAGMATISME LOGIQUE (DeepSeek)</span>
+                        <span>DeepSeek</span>
                         <span className="text-[#0a59f7]">{opinionMetrics.pragmatisme}%</span>
                       </div>
                       <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -2191,7 +2209,7 @@ export default function AIDebate() {
                     {/* Gauge 4: Social */}
                     <div>
                       <div className="flex justify-between text-[9px] font-bold text-gray-500 mb-0.5">
-                        <span>AUDACE & ALINÉATION (Mistral & Grok)</span>
+                        <span>Mistral & Grok</span>
                         <span className="text-[#ff5400]">{opinionMetrics.culture}%</span>
                       </div>
                       <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">
@@ -3115,17 +3133,20 @@ export default function AIDebate() {
             <ExternalLink className="w-3 h-3 text-[#00f5c4] shrink-0" />
           </a>
 
-          {/* Bouton Compte Souverain */}
+          {/* Compte : compte local existant -> fenêtre ; sinon -> inscription du hub */}
           <button
-            onClick={() => setIsAccountModalOpen(true)}
+            onClick={() => {
+              if (alphabetteAccount) setIsAccountModalOpen(true);
+              else window.location.href = membreAlphabette ? "https://alphabette.fr/inscription/" : lienInscription();
+            }}
             className="text-[10px] text-gray-300 hover:text-emerald-400 flex items-center gap-1.5 font-mono transition-colors px-2 py-0.5 rounded bg-white/[0.03] hover:bg-white/[0.07] border border-white/10 cursor-pointer"
-            title="Gérer mon Compte ALPHABETTE Unique"
+            title={alphabetteAccount ? "Compte enregistré sur cet appareil" : "Inscription Alphabette avec un code d'invitation"}
           >
             <ShieldCheck className="w-3 h-3 text-emerald-400" />
             <span>
               {alphabetteAccount 
-                ? `${alphabetteAccount.name.split(" ")[0]} (${alphabetteAccount.isTrialActive ? `Essai ${getTrialDaysRemaining(alphabetteAccount)}j` : `${alphabetteAccount.priceAnnualEur || 15}€`})` 
-                : membreAlphabette ? `${membreAlphabette.prenom} (accès offert)` : "Compte 7j offerts"}
+                ? `${alphabetteAccount.name.split(" ")[0]} (compte local)` 
+                : membreAlphabette ? `${membreAlphabette.prenom} (accès offert)` : "S'inscrire"}
             </span>
           </button>
 
@@ -3238,7 +3259,10 @@ export default function AIDebate() {
         isOpen={isAccountModalOpen}
         onClose={() => setIsAccountModalOpen(false)}
         currentAccount={alphabetteAccount}
-        onAccountChange={(acc) => setAlphabetteAccount(acc)}
+        onAccountChange={(acc) => {
+          setAlphabetteAccount(acc);
+          if (!acc) setIsAccountModalOpen(false);
+        }}
         onOpenSubscriptionModal={() => setIsSubscriptionModalOpen(true)}
       />
 
@@ -3425,7 +3449,7 @@ function SummaryWidget({
               SYNTHÈSE EXÉCUTIVE DES DÉBATS
             </div>
             <div className="text-[10px] text-gray-500 uppercase tracking-widest font-condensed truncate">
-              Rapport critique et synthèse transversale par Gemini-3.5-Flash
+              Rédigée par une IA à partir des répliques (avis, non vérifié)
             </div>
           </div>
         </div>
@@ -3504,7 +3528,7 @@ function VerdictDisplay({
               VERDICT DU JURY SUPRÊME DES MODÈLES
             </div>
             <div className="text-[10px] text-gray-500 uppercase tracking-widest font-condensed mt-0.5 truncate">
-              ÉVALUATION CRITIQUE PROTOCOLÉE PAR GEMINI-3.5-FLASH
+              {widgetVerdict.ecritPar ? `AVIS RENDU PAR ${widgetVerdict.ecritPar.toUpperCase()} (UNE IA, PAS UN JURY HUMAIN)` : "AVIS RENDU PAR UNE IA (PAS UN JURY HUMAIN)"}
             </div>
           </div>
         </div>

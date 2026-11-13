@@ -102,7 +102,10 @@ export function DuelArenaModal({
   const [duelMessages, setDuelMessages] = useState<DuelMessage[]>([]);
   const [isFighting, setIsFighting] = useState(false);
   const [currentTurn, setCurrentTurn] = useState<string | null>(null);
-  const [momentum, setMomentum] = useState(50); // 50 = milieu, 0 = f1 max, 100 = f2 max
+  const [momentum, setMomentum] = useState(50); // 50 = milieu, 0 = f1 max, 100 = f2 max — ne bouge qu'avec VOS applaudissements
+  const momentumRef = useRef(50);
+  useEffect(() => { momentumRef.current = momentum; }, [momentum]);
+  const [duelErreur, setDuelErreur] = useState<string | null>(null);
   const [humanSpeech, setHumanSpeech] = useState("");
   const [duelVerdict, setDuelVerdict] = useState<string | null>(null);
 
@@ -144,6 +147,7 @@ export function DuelArenaModal({
     setDuelMessages([]);
     setDuelRound(1);
     setDuelVerdict(null);
+    setDuelErreur(null);
     setMomentum(50);
     setIsFighting(true);
 
@@ -188,7 +192,6 @@ export function DuelArenaModal({
 
       const updated1 = [...history, msg1];
       setDuelMessages(updated1);
-      setMomentum(prev => Math.max(15, prev - 12));
 
       await new Promise(r => setTimeout(r, 800));
 
@@ -214,7 +217,6 @@ export function DuelArenaModal({
 
       const updated2 = [...updated1, msg2];
       setDuelMessages(updated2);
-      setMomentum(prev => Math.min(85, prev + 14));
       setCurrentTurn(null);
 
       await new Promise(r => setTimeout(r, 1000));
@@ -226,8 +228,9 @@ export function DuelArenaModal({
         setIsFighting(false);
         determineWinner(updated2);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn("Duel warning:", err);
+      setDuelErreur(err?.message || "Le duel s'est arrêté : l'IA n'a pas répondu.");
       setIsFighting(false);
       setCurrentTurn(null);
     }
@@ -261,9 +264,15 @@ Sois incisif, direct, argumenté avec vivacité (environ 80 à 120 mots).`;
 
     if (res.ok) {
       const data = await res.json();
-      return data.text;
+      // Honnêteté : si une autre IA a écrit à la place de ce combattant, on le dit.
+      const noms: Record<string, string> = { openai: "chatgpt", anthropic: "claude" };
+      const idEcrivain = noms[data.provider] || data.provider;
+      const relais = data.ecritPar && idEcrivain !== (speaker.id === "user" ? "" : speaker.id);
+      return relais ? `[écrit par ${data.ecritPar}, à la manière de ${speaker.name}]\n\n${data.text}` : data.text;
     }
-    return `En tant que ${speaker.name}, je démontre sans équivoque la supériorité de ma position sur celle de ${opponent.name}.`;
+    // Aucune réplique inventée : on arrête le duel et on explique pourquoi.
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || `${speaker.name} n'a pas pu répondre.`);
   };
 
   const handleSendHumanSpeech = async () => {
@@ -284,7 +293,6 @@ Sois incisif, direct, argumenté avec vivacité (environ 80 à 120 mots).`;
     setHumanSpeech("");
     const updated = [...duelMessages, userMsg];
     setDuelMessages(updated);
-    setMomentum(prev => (fighter1 === "user" ? Math.max(10, prev - 20) : Math.min(90, prev + 20)));
 
     const opponentId = fighter1 === "user" ? fighter2 : fighter1;
     const opponent = FIGHTERS.find(f => f.id === opponentId)!;
@@ -324,16 +332,23 @@ Sois incisif, direct, argumenté avec vivacité (environ 80 à 120 mots).`;
         setIsFighting(false);
         determineWinner(finalUpdated);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.warn("Duel speech warning:", err);
+      setDuelErreur(err?.message || "Le duel s'est arrêté : l'IA n'a pas répondu.");
       setIsFighting(false);
       setCurrentTurn(null);
     }
   };
 
-  const determineWinner = (history: DuelMessage[]) => {
-    const winner = momentum < 50 ? f1 : f2;
-    setDuelVerdict(`🏆 VICTOIRE PAR K.O. ORATOIRE : ${winner.name.toUpperCase()} l'emporte avec une maîtrise rhétorique implacable lors de cette confrontation au sommet !`);
+  // Le vainqueur est celui que VOUS avez le plus applaudi (sur cet appareil) : aucun jugement inventé.
+  const determineWinner = (_history: DuelMessage[]) => {
+    const m = momentumRef.current;
+    if (m === 50) {
+      setDuelVerdict("Fin du duel : égalité. Applaudissez les répliques qui vous convainquent pour désigner un vainqueur.");
+    } else {
+      const winner = m < 50 ? f1 : f2;
+      setDuelVerdict(`Fin du duel : d'après vos applaudissements, ${winner.name} l'emporte.`);
+    }
   };
 
   const handleClap = (msgId: string, fighterId: string) => {
@@ -580,7 +595,7 @@ Sois incisif, direct, argumenté avec vivacité (environ 80 à 120 mots).`;
                   {f1.name} : {100 - momentum}%
                 </span>
                 <span className="text-gray-400 text-[10px] md:text-xs tracking-wider uppercase font-semibold">
-                  JAUGE D'INFLUENCE DU PUBLIC
+                  VOS APPLAUDISSEMENTS
                 </span>
                 <span className="text-red-400 flex items-center gap-1.5">
                   {f2.name} : {momentum}%
@@ -753,12 +768,18 @@ Sois incisif, direct, argumenté avec vivacité (environ 80 à 120 mots).`;
             </div>
           )}
 
-          {/* Verdict Final par K.O. */}
+          {duelErreur && (
+            <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/40 text-sm text-red-200 leading-relaxed">
+              {duelErreur}
+            </div>
+          )}
+
+          {/* Verdict final : celui du public (vos applaudissements) */}
           {duelVerdict && (
             <div className="p-5 md:p-7 rounded-2xl md:rounded-3xl bg-gradient-to-r from-amber-500/20 via-[#120f08] to-red-500/20 border-2 border-amber-500/50 text-center space-y-2.5 animate-summaryReveal shadow-[0_0_50px_rgba(245,158,11,0.2)]">
               <div className="flex items-center justify-center gap-2 text-amber-400 text-xs md:text-sm font-extrabold uppercase tracking-widest font-condensed">
                 <Award className="w-5 h-5" />
-                VERDICT OFFICIEL DU CHOC DES TITANS
+                VERDICT DU PUBLIC (VOUS, SUR CET APPAREIL)
               </div>
               <div className="text-base md:text-xl lg:text-2xl font-black text-white font-condensed uppercase tracking-wide leading-relaxed">
                 {duelVerdict}

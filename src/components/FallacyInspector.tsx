@@ -9,6 +9,8 @@ export interface FallacyData {
   fallacies: { name: string; explanation: string; severity: "Faible" | "Modéré" | "Élevé" }[];
   strengths: string[];
   verdictQuote: string;
+  /** IA qui a écrit l'analyse (« Mistral · mistral-large-latest »). */
+  ecritPar?: string;
 }
 
 interface FallacyInspectorProps {
@@ -28,6 +30,7 @@ export function FallacyInspector({
 }: FallacyInspectorProps) {
   const [data, setData] = useState<FallacyData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
   const [expanded, setExpanded] = useState(false);
 
   const handleAnalyze = async (e: React.MouseEvent) => {
@@ -38,6 +41,7 @@ export function FallacyInspector({
     }
 
     setLoading(true);
+    setErreur(null);
     try {
       const res = await fetch("/api/debate/analyze-fallacy", {
         method: "POST",
@@ -53,9 +57,13 @@ export function FallacyInspector({
         const result = await res.json();
         setData(result);
         setExpanded(true);
+      } else {
+        const err = await res.json().catch(() => ({}));
+        setErreur(err.error || "L'analyse n'a pas pu être faite.");
       }
     } catch (err) {
       console.warn("Erreur lors de l'analyse logique:", err);
+      setErreur("L'analyse n'a pas pu être faite.");
     } finally {
       setLoading(false);
     }
@@ -95,8 +103,15 @@ export function FallacyInspector({
         )}
       </div>
 
+      {erreur && !data && (
+        <div className="mt-2 p-2 rounded bg-red-500/10 border border-red-500/30 text-red-200 text-[11px] leading-relaxed">{erreur}</div>
+      )}
+
       {expanded && data && (
         <div className="mt-3 p-3 rounded-lg bg-black/40 border border-white/[0.08] space-y-2.5 animate-fadeSlideUp">
+          <div className="text-[10px] text-gray-500 leading-snug">
+            Avis {data.ecritPar ? `écrit par ${data.ecritPar}` : "d'une IA"} sur la logique du texte : pas une vérification des faits.
+          </div>
           {/* Header de l'arbitre */}
           <div className="flex items-center justify-between border-b border-white/[0.06] pb-2">
             <div className="flex items-center gap-1.5 text-[#9ca3af]">
@@ -132,7 +147,7 @@ export function FallacyInspector({
           ) : (
             <div className="flex items-center gap-1.5 text-emerald-400 bg-emerald-500/[0.07] border border-emerald-500/20 p-2 rounded">
               <ShieldCheck className="w-4 h-4 shrink-0" />
-              <span className="text-[11px]">Aucun sophisme majeur détecté. Argumentation d'une pureté logique exemplaire.</span>
+              <span className="text-[11px]">Aucun sophisme majeur relevé par l'IA.</span>
             </div>
           )}
 

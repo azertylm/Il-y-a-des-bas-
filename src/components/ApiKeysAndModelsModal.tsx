@@ -251,13 +251,13 @@ export function ApiKeysAndModelsModal({
       <div className="bg-[#0e0e12] border border-white/10 rounded-2xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-gray-200">
         
         {/* HEADER MODAL */}
-        <div className="px-6 py-4 border-b border-white/[0.08] flex items-center justify-between bg-gradient-to-r from-white/[0.03] to-transparent shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00f5c4]/20 to-blue-500/20 border border-[#00f5c4]/40 flex items-center justify-center text-[#00f5c4] shadow-sm">
+        <div className="px-4 sm:px-6 py-4 border-b border-white/[0.08] flex items-center justify-between gap-2 bg-gradient-to-r from-white/[0.03] to-transparent shrink-0">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00f5c4]/20 to-blue-500/20 border border-[#00f5c4]/40 flex items-center justify-center text-[#00f5c4] shadow-sm shrink-0">
               <Cpu className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-2">
                 <h2 className="font-condensed font-bold text-lg text-white uppercase tracking-wider">
                   Clés API, Modèles & Liberté d'Expression
                 </h2>
@@ -266,14 +266,15 @@ export function ApiKeysAndModelsModal({
                 </span>
               </div>
               <p className="text-xs text-gray-400">
-                Gérez vos modèles d'IA, faites évoluer vos versions et découvrez les garanties de neutralité doctrinale.
+                Vos clés restent dans ce navigateur. Choisissez aussi le modèle de chaque IA.
               </p>
             </div>
           </div>
 
           <button
             onClick={onClose}
-            className="w-8 h-8 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
+            aria-label="Fermer"
+            className="w-8 h-8 shrink-0 rounded-lg bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white flex items-center justify-center cursor-pointer transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -333,12 +334,13 @@ export function ApiKeysAndModelsModal({
                   <div className="font-bold text-white flex items-center gap-2 font-condensed uppercase tracking-wide">
                     <span>Comment fonctionne l'arène ?</span>
                     <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 font-sans">
-                      Sans clé requise
+                      Au moins une clé
                     </span>
                   </div>
                   <p className="leading-relaxed">
-                    <strong>Vous n'avez pas de clé ?</strong> L'arène fonctionne automatiquement grâce au moteur haute fidélité Gemini de Google et au relais dialectique souverain.
-                    <strong> Vous avez vos propres clés ?</strong> Renseignez-les pour faire parler directement le véritable moteur de chaque constructeur (OpenAI, Anthropic, xAI, Mistral, DeepSeek) avec le modèle de votre choix.
+                    <strong>Il faut au moins une clé :</strong> sans clé, aucune IA ne peut répondre. Une seule clé suffit pour commencer : l'IA de cette clé écrit aussi pour les orateurs sans clé, en imitant leur style, et chaque réplique indique qui l'a vraiment écrite.
+                    <strong> Une clé par constructeur</strong> (OpenAI, Anthropic, Google, xAI, Mistral, DeepSeek) fait parler le vrai modèle de chacun.
+                    Vos clés restent dans ce navigateur et ne sont envoyées qu'au fournisseur d'IA concerné (jamais à Alphabette). Le coût vous est facturé par ce fournisseur.
                   </p>
                 </div>
               </div>
