@@ -770,6 +770,8 @@ app.post("/api/debate/test-key", async (req, res) => {
 
 app.post("/api/debate/generate", async (req, res) => {
   const { systemPrompt, topicTitle, topicDescription, context, agentId, speed } = req.body;
+  // Débat IA seul : posture choisie par l'utilisateur pour cette voix (remplace la liberté d'opinion).
+  const posture = typeof req.body?.posture === "string" ? req.body.posture.replace(/\s+/g, " ").trim().slice(0, 300) : "";
   const isJury = typeof topicTitle === "string" && topicTitle.startsWith("JURY");
   const idDemande = String(agentId || "");
   const resolvedAgentId: IdOrateur = (idDemande in CLES_IA ? idDemande : identifyAgent(systemPrompt)) as IdOrateur;
@@ -788,7 +790,9 @@ Contexte du débat actuel (réponses précédentes) :
 ${context ? context : "Le débat commence, tu ouvres la discussion."}
 
 Consignes de liberté, de rapidité et d'impact :
-- LIBERTÉ TOTALE D'OPINION : Tu disposes d'une liberté intellectuelle et dialectique absolue. Aucun point de vue, parti-pris, thèse ou conclusion ne t'est suggéré ni imposé. Tu es entièrement souverain pour adopter la posture de ton choix (favorable, opposée, sceptique, alternative ou médiane) selon ta propre analyse.
+${posture
+  ? `- POSTURE CHOISIE PAR L'ORGANISATEUR DU DÉBAT : ${posture}. Défends cette position avec conviction et des arguments honnêtes, même si tu penserais autrement ; n'invente ni chiffre ni source.`
+  : "- LIBERTÉ TOTALE D'OPINION : Tu disposes d'une liberté intellectuelle et dialectique absolue. Aucun point de vue, parti-pris, thèse ou conclusion ne t'est suggéré ni imposé. Tu es entièrement souverain pour adopter la posture de ton choix (favorable, opposée, sceptique, alternative ou médiane) selon ta propre analyse."}
 - Sois vif, direct et percutant.
 - Limite impérativement ta tirade à 2 paragraphes concis (environ 70 à 110 mots au total).
 - Ne commence JAMAIS par une formule de politesse ("Bonjour", "Je prends la parole", etc.). Entre immédiatement dans le vif de ton argument.

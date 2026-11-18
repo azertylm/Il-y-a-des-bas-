@@ -35,7 +35,7 @@ export function AlphabetteTopNav({
   const [dropdownOpen, setDropdownOpen] = useState(false);
 
   return (
-    <header className="w-full bg-[#07090e]/90 backdrop-blur-md border-b border-white/10 px-2 sm:px-4 py-2.5 flex flex-wrap items-center justify-end gap-2 z-40 relative text-white select-none">
+    <header className="iad-masquable w-full bg-[#07090e]/90 backdrop-blur-md border-b border-white/10 px-2 sm:px-4 py-2.5 flex flex-wrap items-center justify-end gap-2 z-40 relative text-white select-none">
       
       {/* Right: Quota badge, API Keys & Account Buttons */}
       <div className="flex flex-wrap items-center justify-end gap-2 min-w-0">

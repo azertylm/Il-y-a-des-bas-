@@ -85,3 +85,11 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+
+/* Lecture plein écran (18/11/2026) : en descendant dans le débat, la double barre Alphabette
+   remonte (alphabette-barre.js, data-masquer="defilement") et les bandeaux du haut d'IA Débat
+   sortent de l'écran. Tout revient dès qu'on remonte. */
+.iad-masquable { transition: transform 0.25s ease, opacity 0.2s ease; }
+html[data-ab-barres="cachees"] .iad-masquable { transform: translateY(-110%); opacity: 0; pointer-events: none; }
+@media (prefers-reduced-motion: reduce) { .iad-masquable { transition: none; } }
+

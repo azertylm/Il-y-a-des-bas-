@@ -54,7 +54,8 @@ import {
   Shield,
   ShieldCheck,
   Share2,
-  FileCode
+  FileCode,
+  Bot,
 } from "lucide-react";
 
 import { FallacyInspector } from "./components/FallacyInspector";
@@ -92,6 +93,27 @@ const DEFAULT_TOPICS: Topic[] = [
   { id: 4, category: "PAIX & SÉCURITÉ", title: "L'IA peut-elle mettre fin aux guerres et aux conflits armés ?", description: "Prédiction des crises, diplomatie augmentée, désescalade algorithmique en temps réel. Peut-on confier la sécurité mondiale à des intelligences non humaines ?" },
   { id: 5, category: "ÉDUCATION & AVENIR", title: "L'IA peut-elle offrir une éducation d'excellence à chaque enfant de la planète ?", description: "Apprentissage personnalisé, accès universel au savoir, enseignants augmentés. L'IA peut-elle effacer les inégalités éducatives entre riches et pauvres, entre Nord et Sud ?" },
 ];
+
+/** Débat IA seul : postures proposées pour chaque voix (l'utilisateur peut écrire la sienne). */
+const POSTURES_SOLO = [
+  "Pour : défend la proposition",
+  "Contre : s'oppose à la proposition",
+  "Neutre et pragmatique : pèse le pour et le contre",
+  "Sceptique : doute des promesses, demande des preuves",
+  "Optimiste : voit d'abord les chances et les solutions",
+  "Libre : choisit elle-même sa position",
+];
+interface ConfigSolo {
+  /** Nombre de voix (2 à 6). */
+  nb: number;
+  /** Posture de chaque voix (même ordre que AGENTS, qui ne sert qu'aux couleurs). */
+  postures: string[];
+  /** Clé utilisée pour toutes les voix (id d'orateur : chatgpt, claude, gemini, deepseek, mistral, grok). */
+  cle: string;
+}
+const CONFIG_SOLO_DEFAUT: ConfigSolo = { nb: 3, postures: [...POSTURES_SOLO], cle: "" };
+/** Préfixe des en-têtes de clé et de modèle de chaque fournisseur (voir getHeaders). */
+const PREFIXE_CLE: Record<string, string> = { chatgpt: "x-openai-", claude: "x-anthropic-", gemini: "x-gemini-", deepseek: "x-deepseek-", mistral: "x-mistral-", grok: "x-grok-" };
 
 const AGENTS = [
   { 
@@ -465,8 +487,9 @@ export default function AIDebate() {
 
   const [isSidebarVisible, setIsSidebarVisible] = useState<boolean>(() => {
     try {
-      const saved = localStorage.getItem("debate_show_sidebar");
-      return saved !== null ? saved === "true" : true;
+      // Accueil épuré (18/11/2026) : modules latéraux repliés par défaut, « Tout ouvrir » les affiche.
+      const saved = localStorage.getItem("debate_show_sidebar_v2");
+      return saved !== null ? saved === "true" : false;
     } catch {
       return true;
     }
@@ -507,7 +530,7 @@ export default function AIDebate() {
   const handleToggleSidebar = (val?: boolean) => {
     setIsSidebarVisible(prev => {
       const next = val !== undefined ? val : !prev;
-      try { localStorage.setItem("debate_show_sidebar", String(next)); } catch {}
+      try { localStorage.setItem("debate_show_sidebar_v2", String(next)); } catch {}
       return next;
     });
   };
@@ -607,6 +630,34 @@ export default function AIDebate() {
 
     return headers;
   }, [apiKeys, apiModels, alphabetteAccount]);
+
+  // ── Débat IA seul : l'utilisateur choisit la posture de chaque voix ; une seule clé pour toutes ──
+  const [isSoloPanelOpen, setIsSoloPanelOpen] = useState(false);
+  const [configSolo, setConfigSolo] = useState<ConfigSolo>(() => {
+    try {
+      const lu = JSON.parse(localStorage.getItem("iadebat_config_solo") || "null");
+      if (lu && Array.isArray(lu.postures)) return { ...CONFIG_SOLO_DEFAUT, ...lu, postures: [...lu.postures, ...POSTURES_SOLO].slice(0, 6) };
+    } catch {}
+    return CONFIG_SOLO_DEFAUT;
+  });
+  useEffect(() => {
+    try { localStorage.setItem("iadebat_config_solo", JSON.stringify(configSolo)); } catch {}
+  }, [configSolo]);
+  const soloRef = useRef<ConfigSolo | null>(null);
+  const [soloActif, setSoloActif] = useState(false);
+  /** Clés enregistrées sur cet appareil (une seule servira à toutes les voix). */
+  const clesDisponibles = AGENTS.filter(a => (a.id === "mistral" ? apiKeys.mistral || alphabetteAccount?.mistralApiKey : (apiKeys as any)[a.id]));
+  const cleSolo = clesDisponibles.some(a => a.id === configSolo.cle) ? configSolo.cle : clesDisponibles[0]?.id || "";
+  /** En-têtes réduits à la seule clé choisie : aucune autre IA ne peut prendre le relais. */
+  const getHeadersCleUnique = useCallback((cle: string) => {
+    const tous = getHeaders();
+    const prefixe = PREFIXE_CLE[cle] || "";
+    const garde: Record<string, string> = {};
+    for (const [nom, valeur] of Object.entries(tous)) {
+      if (nom === "Content-Type" || (prefixe && nom.startsWith(prefixe))) garde[nom] = String(valeur);
+    }
+    return garde;
+  }, [getHeaders]);
 
   const bottomRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1191,8 +1242,9 @@ export default function AIDebate() {
     setErrorMessage(null);
     stopRequested.current = false;
 
-    // Filtration selon les agents sélectionnés par l'utilisateur
-    const activeAgents = agentList.filter(a => activeAgentsFlags[a.id]);
+    // Filtration selon les agents sélectionnés par l'utilisateur (en débat IA seul : les voix choisies)
+    const solo = soloRef.current;
+    const activeAgents = solo ? agentList : agentList.filter(a => activeAgentsFlags[a.id]);
     if (activeAgents.length === 0) {
       setErrorMessage("Veuillez sélectionner au moins un décodeur IA actif dans les configurations pour débattre.");
       setPhase("paused");
@@ -1219,7 +1271,11 @@ export default function AIDebate() {
       const context = buildContext(agent.id, currentMsgs);
 
       // Adaptation dynamique du prompt système en fonction des paramètres du débat
-      let enhancedPrompt = agent.systemPrompt;
+      const indexVoix = AGENTS.findIndex(a => a.id === agent.id);
+      const posture = solo ? (solo.postures[indexVoix] || POSTURES_SOLO[5]).trim().slice(0, 300) : "";
+      let enhancedPrompt = solo
+        ? `Tu es « Voix ${indexVoix + 1} », un participant d'une table ronde entre intelligences artificielles. L'organisateur du débat t'a confié cette posture : ${posture}. Défends-la avec conviction et honnêteté tout au long du débat, sans jamais te présenter comme une autre IA.`
+        : agent.systemPrompt;
       if (isTurboSpeed || speechLength === "court") {
         enhancedPrompt += " Fais une intervention concise, tranchante et percutante en moins de 90 mots. Pas de préambule.";
       } else if (debateTone === "incisif") {
@@ -1245,14 +1301,15 @@ export default function AIDebate() {
 
         const res = await fetch("/api/debate/generate", {
           method: "POST",
-          headers: getHeaders(),
+          headers: solo ? getHeadersCleUnique(solo.cle) : getHeaders(),
           body: JSON.stringify({
             systemPrompt: enhancedPrompt,
             topicTitle: activeTopic.title,
             topicDescription: activeTopic.description,
             context,
-            agentId: agent.id,
+            agentId: solo ? solo.cle : agent.id,
             speed: isTurboSpeed ? "turbo" : "standard",
+            ...(solo ? { posture } : {}),
           }),
         });
 
@@ -1270,13 +1327,14 @@ export default function AIDebate() {
         const fournisseur = String(data.provider || "");
         const idFournisseur = fournisseur === "openai" ? "chatgpt" : fournisseur === "anthropic" ? "claude" : fournisseur;
         const ecritPar = fournisseur ? `${NOMS_FOURNISSEURS[fournisseur] ?? fournisseur}${data.modelUsed ? ` · ${data.modelUsed}` : ""}` : undefined;
-        const relais = Boolean(fournisseur) && idFournisseur !== agent.id;
+        // En débat IA seul, toutes les voix sont écrites par la même IA (celle de la clé) : ce n'est pas un relais.
+        const relais = !solo && Boolean(fournisseur) && idFournisseur !== agent.id;
 
         const msg: Message = {
           id: `${agent.id}-${Date.now()}`,
           agentId: agent.id, 
-          agentName: agent.name, 
-          agentRole: agent.role,
+          agentName: solo ? `Voix ${indexVoix + 1}` : agent.name, 
+          agentRole: solo ? posture.split(":")[0].trim() : agent.role,
           agentColor: agent.color, 
           agentDim: agent.dim, 
           agentBorder: agent.border,
@@ -1317,13 +1375,14 @@ export default function AIDebate() {
       setLoadingAgent(null);
       // Temporisation de lecture adaptée pour que la personne puisse lire tranquillement sans scroller
       if (i < activeAgents.length - 1) {
-        await waitForReading(agent.name, nextAgent?.name);
+        const nomVoix = (a?: typeof AGENTS[number]) => (a && solo ? `Voix ${AGENTS.findIndex(x => x.id === a.id) + 1}` : a?.name);
+        await waitForReading(nomVoix(agent) ?? agent.name, nomVoix(nextAgent));
       }
     }
     
     setRoundCount(n => n + 1);
     setPhase("paused");
-  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength, isTurboSpeed, getHeaders, waitForReading, aDesClesIA, alphabetteAccount]);
+  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength, isTurboSpeed, getHeaders, getHeadersCleUnique, waitForReading, aDesClesIA, alphabetteAccount]);
 
   // Sélectionne les agents actifs en désignant un premier orateur aléatoire (jamais forcé sur ChatGPT)
   const getRandomizedActiveAgents = useCallback((avoidFirstId?: string | null) => {
@@ -1346,6 +1405,8 @@ export default function AIDebate() {
 
   // Contrôleurs interactifs principaux
   const handleStart = () => {
+    soloRef.current = null;
+    setSoloActif(false);
     // Premier orateur choisi TOTALEMENT ALÉATOIREMENT parmi les IA actives
     const randomizedList = getRandomizedActiveAgents();
     runAgents(randomizedList);
@@ -1358,7 +1419,33 @@ export default function AIDebate() {
     setPhase("paused");
   };
 
+  /** Débat IA seul : les voix choisies, chacune avec sa posture, toutes avec la même clé. */
+  const handleStartSolo = () => {
+    if (!cleSolo) {
+      setErrorMessage("Ajoutez une clé (bouton « Clés API ») : elle servira à toutes les voix du débat IA seul.");
+      setIsApiKeysModalOpen(true);
+      return;
+    }
+    if (messagesRef.current.length > 0) {
+      setMessages([]);
+      messagesRef.current = [];
+      setRoundCount(0);
+      setZenActiveIndex(0);
+      setSummary("");
+      setVerdict(null);
+    }
+    const config = { ...configSolo, cle: cleSolo, nb: Math.min(6, Math.max(2, configSolo.nb)) };
+    soloRef.current = config;
+    setSoloActif(true);
+    setIsSoloPanelOpen(false);
+    runAgents(AGENTS.slice(0, config.nb));
+  };
+
   const handleContinue = () => {
+    if (soloRef.current) {
+      runAgents(AGENTS.slice(0, soloRef.current.nb));
+      return;
+    }
     // Identifier la dernière IA ayant parlé pour ne pas reprendre sur elle ni toujours sur ChatGPT
     const msgs = messagesRef.current;
     const lastSpeakerId = msgs.length > 0 ? msgs[msgs.length - 1].agentId : null;
@@ -1374,6 +1461,8 @@ export default function AIDebate() {
   };
 
   const handleReset = () => {
+    soloRef.current = null;
+    setSoloActif(false);
     stopRequested.current = true;
     skipReadingWaitRef.current?.();
     setIsReadingWaiting(false);
@@ -1499,7 +1588,7 @@ export default function AIDebate() {
       <div className="fixed top-[-20vh] left-1/2 -translate-x-1/2 w-full max-w-[1200px] h-[45vh] bg-[radial-gradient(ellipse,rgba(0,245,196,0.04)_0%,transparent_70%)] pointer-events-none z-0" />
 
       {/* ── HEADER ──────────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 border-b border-white/[0.08] bg-[#070709]/95 backdrop-blur-xl px-1.5 sm:px-2 py-0.5 min-h-[38px] flex flex-wrap items-center justify-between gap-1.5 shrink-0">
+      <header className="iad-masquable sticky top-0 z-50 border-b border-white/[0.08] bg-[#070709]/95 backdrop-blur-xl px-1.5 sm:px-2 py-0.5 min-h-[38px] flex flex-wrap items-center justify-between gap-1.5 shrink-0">
         
         {/* Titre et tags */}
         <div className="flex items-center gap-2 shrink-0">
@@ -1521,8 +1610,8 @@ export default function AIDebate() {
         </div>
 
         {/* Global tab Switcher & Audio Atmosphere */}
-        <div className="flex items-center gap-2 shrink-0">
-          <div className="flex gap-1 bg-white/[0.04] border border-white/[0.08] rounded-lg p-0.5">
+        <div className="flex items-center gap-2 min-w-0 max-w-full">
+          <div className="flex flex-wrap gap-1 bg-white/[0.04] border border-white/[0.08] rounded-lg p-0.5 max-w-full">
             <button 
               onClick={() => setTab("debate")} 
               className={`border-none rounded-md px-2.5 sm:px-3 py-1 text-xs font-bold transition-all duration-150 cursor-pointer ${
@@ -1662,11 +1751,11 @@ export default function AIDebate() {
             <a
               href="https://alphabette.fr/inscription/"
               title="Inscrit(e) avec un code d'invitation : l'accès vous est offert"
-              className="flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border border-emerald-500/40 bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-200 font-bold text-xs tracking-wider cursor-pointer transition-all shadow-sm shrink-0"
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded-md text-emerald-300/80 hover:text-emerald-200 text-[11px] font-semibold cursor-pointer transition-colors shrink-0"
             >
-              <ShieldCheck className="w-3.5 h-3.5 shrink-0" />
-              <span className="font-mono">{membreAlphabette.prenom}</span>
-              <span className="text-[10px] font-mono px-1.5 py-0.2 rounded font-bold border bg-emerald-400/20 text-emerald-300 border-emerald-400/30">Accès offert</span>
+              <ShieldCheck className="w-3 h-3 shrink-0" />
+              <span>{membreAlphabette.prenom}</span>
+              <span className="sr-only">: accès offert</span>
             </a>
           ) : (
             <a
@@ -2224,10 +2313,10 @@ export default function AIDebate() {
           )}
 
             {/* ── COLONNE DE DROITE : ARÈNE DE DISCUSSION EN DIRECT ───────────── */}
-            <section className="flex-1 flex flex-col transition-all duration-300 w-full min-w-0">
+            <section className="flex-1 flex flex-col transition-all duration-300 w-full min-w-0 order-first lg:order-none">
               
               {/* ── BARRE DE VISIBILITÉ, CONTRÔLE PLEIN ÉCRAN & BOUTON BIG ─── */}
-              <div className="p-1 px-1.5 bg-[#0a0a0d] border border-white/[0.08] rounded-lg flex flex-wrap items-center justify-between gap-1 shadow-sm shrink-0">
+              <div className={`${phase === "idle" && messages.length === 0 ? "hidden" : "flex"} p-1 px-1.5 bg-[#0a0a0d] border border-white/[0.08] rounded-lg flex-wrap items-center justify-between gap-1 shadow-sm shrink-0`}>
                 <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                   {/* BOUTON LANCER LE DÉBAT DIRECT (Visible dès le haut en phase idle) */}
                   {phase === "idle" && (
@@ -2418,7 +2507,7 @@ export default function AIDebate() {
               </div>
               
               {/* Active Hero Topic Banner (Compact & Collapsible - Réduit de 20%) */}
-              <div className={`mt-0.5 p-1 px-1.5 bg-white/[0.01] border rounded-lg relative overflow-hidden shrink-0 transition-all duration-300 ${isClosed ? 'border-white/[0.04]' : 'border-white/[0.08] bg-gradient-to-b from-[#0e0e12] to-[#060608]'}`}>
+              <div className={`mt-0.5 ${isTopicBannerCollapsed ? "p-1.5 px-2" : "p-3 sm:p-5"} bg-white/[0.01] border rounded-xl relative overflow-hidden shrink-0 transition-all duration-300 ${isClosed ? 'border-white/[0.04]' : 'border-[#00f5c4]/25 bg-gradient-to-b from-[#0e0e12] to-[#060608] shadow-lg shadow-[#00f5c4]/5'}`}>
                 <div className="flex items-center justify-between gap-2 mb-0.5">
                   <div className="flex items-center gap-1.5 text-xs font-bold text-gray-400 uppercase truncate">
                     {activeTopic.isCustom ? (
@@ -2452,13 +2541,12 @@ export default function AIDebate() {
                   </button>
                 </div>
 
-                <h1 className={`font-bold tracking-normal text-white leading-snug ${
-                  fontSizeLevel === "xlarge" 
-                    ? "text-base sm:text-lg md:text-xl" 
-                    : fontSizeLevel === "large" 
-                    ? "text-sm sm:text-base md:text-lg" 
-                    : "text-xs sm:text-sm md:text-base"
-                } ${isTopicBannerCollapsed ? 'truncate mb-0' : 'line-clamp-2 mb-0.5'}`}>
+                <p className={`${isTopicBannerCollapsed ? "hidden" : "block"} text-center text-[10px] sm:text-xs font-bold uppercase tracking-[0.2em] text-[#00f5c4]/80 mt-1 mb-1`}>Le sujet du débat</p>
+                <h1 className={`tracking-tight text-white ${
+                  isTopicBannerCollapsed
+                    ? "font-bold text-sm sm:text-base truncate mb-0"
+                    : "font-extrabold text-xl sm:text-2xl md:text-3xl leading-tight text-center text-balance mb-2 max-w-3xl mx-auto"
+                }`}>
                   {activeTopic.title}
                 </h1>
 
@@ -2466,11 +2554,152 @@ export default function AIDebate() {
                   <>
                     <p 
                       onClick={() => handleToggleTopicBanner(true)}
-                      className={`${fontSizeLevel === "xlarge" ? "text-xs sm:text-sm" : fontSizeLevel === "large" ? "text-[11px] sm:text-xs" : "text-[10px] md:text-[11px]"} text-gray-300 max-w-4xl leading-relaxed line-clamp-1 hover:line-clamp-none transition-all cursor-pointer`}
+                      className="text-sm sm:text-base text-gray-300 max-w-2xl mx-auto text-center leading-relaxed line-clamp-3 hover:line-clamp-none transition-all cursor-pointer"
                       title="Cliquez pour compacter / déplier"
                     >
                       {activeTopic.description}
                     </p>
+
+                    {/* Actions principales, juste sous le sujet (accueil épuré du 18/11/2026) */}
+                    {phase === "idle" && (
+                      <div className="mt-4 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-center gap-2">
+                        <button
+                          onClick={handleStart}
+                          className="flex items-center justify-center gap-2 bg-[#00f5c4] hover:bg-[#00e0b0] text-black font-extrabold text-sm sm:text-base px-5 py-3 rounded-xl shadow-lg shadow-[#00f5c4]/30 ring-2 ring-[#00f5c4]/50 uppercase tracking-wider cursor-pointer transition-all"
+                        >
+                          <Play className="w-4 h-4 fill-current" />
+                          <span>Lancer le débat</span>
+                        </button>
+                        <button
+                          onClick={() => setIsSoloPanelOpen(o => !o)}
+                          aria-expanded={isSoloPanelOpen}
+                          className="flex items-center justify-center gap-2 bg-[#b07aff] hover:bg-[#9d5cff] text-black font-extrabold text-sm sm:text-base px-5 py-3 rounded-xl shadow-lg shadow-[#b07aff]/30 ring-2 ring-[#b07aff]/50 uppercase tracking-wider cursor-pointer transition-all"
+                        >
+                          <Bot className="w-4 h-4" />
+                          <span>Lancer débat IA seul</span>
+                        </button>
+                        <button
+                          onClick={isAllSideModulesHidden ? handleShowAllSideModules : handleHideAllSideModules}
+                          className={`flex items-center justify-center gap-2 font-extrabold text-sm sm:text-base px-5 py-3 rounded-xl border-2 uppercase tracking-wider cursor-pointer transition-all ${
+                            isAllSideModulesHidden
+                              ? "border-[#00f5c4] text-[#00f5c4] bg-[#00f5c4]/10 hover:bg-[#00f5c4]/20"
+                              : "border-amber-400 text-amber-300 bg-amber-500/10 hover:bg-amber-500/20"
+                          }`}
+                          title={isAllSideModulesHidden ? "Afficher les réglages, les orateurs, la boussole et le vote" : "Replier les réglages pour garder le débat seul à l'écran"}
+                        >
+                          {isAllSideModulesHidden ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                          <span>{isAllSideModulesHidden ? "Tout ouvrir" : "Tout masquer"}</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {isSoloPanelOpen && phase === "idle" && (
+                      <div className="mt-4 rounded-xl border border-[#b07aff]/40 bg-[#b07aff]/[0.06] p-3 sm:p-4 text-left space-y-3">
+                        <div>
+                          <h2 className="text-sm sm:text-base font-extrabold text-white">Débat IA seul : vous choisissez l'avis de chaque voix</h2>
+                          <p className="text-xs sm:text-sm text-gray-300 mt-1">
+                            Toutes les voix sont écrites par la même IA, avec une seule de vos clés. Chaque réplique indique quelle IA l'a écrite.
+                          </p>
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-xs sm:text-sm font-bold text-gray-200">Nombre de voix :</span>
+                          {[2, 3, 4, 5, 6].map(n => (
+                            <button
+                              key={n}
+                              onClick={() => setConfigSolo(c => ({ ...c, nb: n }))}
+                              aria-pressed={configSolo.nb === n}
+                              className={`min-w-[2.5rem] h-10 rounded-lg border text-sm font-bold cursor-pointer ${configSolo.nb === n ? "bg-[#b07aff] text-black border-[#b07aff]" : "border-white/20 text-gray-200 hover:bg-white/10"}`}
+                            >
+                              {n}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="space-y-2">
+                          {AGENTS.slice(0, configSolo.nb).map((agent, i) => {
+                            const valeur = configSolo.postures[i] ?? "";
+                            const prereglee = POSTURES_SOLO.includes(valeur);
+                            return (
+                              <div key={agent.id} className="rounded-lg border border-white/10 bg-black/30 p-2 space-y-1.5">
+                                <label className="flex items-center gap-2 text-xs sm:text-sm font-bold text-white" htmlFor={`posture-${i}`}>
+                                  <span className="w-3 h-3 rounded-full shrink-0" style={{ background: agent.color }} aria-hidden="true" />
+                                  Voix {i + 1}
+                                </label>
+                                <select
+                                  id={`posture-${i}`}
+                                  value={prereglee ? valeur : "__libre__"}
+                                  onChange={(e) => {
+                                    const v = e.target.value === "__libre__" ? "" : e.target.value;
+                                    setConfigSolo(c => { const p = [...c.postures]; p[i] = v; return { ...c, postures: p }; });
+                                  }}
+                                  className="w-full rounded-lg bg-[#0b0b10] border border-white/20 text-sm text-white px-2 py-2"
+                                >
+                                  {POSTURES_SOLO.map(po => <option key={po} value={po}>{po}</option>)}
+                                  <option value="__libre__">Autre : je l'écris moi-même</option>
+                                </select>
+                                {!prereglee && (
+                                  <input
+                                    type="text"
+                                    value={valeur}
+                                    maxLength={300}
+                                    onChange={(e) => {
+                                      const v = e.target.value;
+                                      setConfigSolo(c => { const p = [...c.postures]; p[i] = v; return { ...c, postures: p }; });
+                                    }}
+                                    placeholder="Ex. : Pour, mais seulement pour les métiers pénibles"
+                                    className="w-full rounded-lg bg-[#0b0b10] border border-white/20 text-sm text-white px-2 py-2"
+                                  />
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="space-y-1.5">
+                          <label htmlFor="cle-solo" className="block text-xs sm:text-sm font-bold text-gray-200">Clé utilisée pour toutes les voix</label>
+                          {clesDisponibles.length > 0 ? (
+                            <select
+                              id="cle-solo"
+                              value={cleSolo}
+                              onChange={(e) => setConfigSolo(c => ({ ...c, cle: e.target.value }))}
+                              className="w-full rounded-lg bg-[#0b0b10] border border-white/20 text-sm text-white px-2 py-2"
+                            >
+                              {clesDisponibles.map(a => <option key={a.id} value={a.id}>Ma clé {a.name}</option>)}
+                            </select>
+                          ) : (
+                            <p className="text-xs sm:text-sm text-amber-200">
+                              Aucune clé enregistrée sur cet appareil.{" "}
+                              <button onClick={() => setIsApiKeysModalOpen(true)} className="underline font-bold cursor-pointer">Ajouter ma clé</button>{" "}
+                              (une seule suffit, elle reste dans votre navigateur).
+                            </p>
+                          )}
+                        </div>
+
+                        <div className="flex flex-col sm:flex-row gap-2">
+                          <button
+                            onClick={handleStartSolo}
+                            disabled={!cleSolo || configSolo.postures.slice(0, configSolo.nb).some(p => !p.trim())}
+                            className="flex items-center justify-center gap-2 bg-[#b07aff] hover:bg-[#9d5cff] disabled:opacity-50 disabled:cursor-not-allowed text-black font-extrabold text-sm px-5 py-3 rounded-xl uppercase tracking-wider cursor-pointer"
+                          >
+                            <Play className="w-4 h-4 fill-current" />
+                            <span>Lancer avec ces avis</span>
+                          </button>
+                          <button
+                            onClick={() => setIsSoloPanelOpen(false)}
+                            className="px-5 py-3 rounded-xl border border-white/20 text-gray-200 hover:bg-white/10 text-sm font-bold cursor-pointer"
+                          >
+                            Fermer
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {soloActif && messages.length > 0 && (
+                      <p className="mt-3 text-center text-xs sm:text-sm text-[#d6bcff]">
+                        🤖 Débat IA seul : {soloRef.current?.nb ?? configSolo.nb} voix aux avis choisis par vous, écrites avec votre clé {AGENTS.find(a => a.id === (soloRef.current?.cle || cleSolo))?.name ?? ""}.
+                      </p>
+                    )}
 
                     {/* Quick Interactive Action Bar - Compacte & Toujours 100% visible sans défilement */}
                     <div className="flex flex-wrap items-center gap-1.5 mt-1.5 pt-1.5 border-t border-white/[0.08]">
@@ -2630,16 +2859,9 @@ export default function AIDebate() {
                       <h3 className="text-xs md:text-sm font-bold text-gray-200 uppercase tracking-wider mb-0.5 flex items-center gap-1.5">
                         <span>🏛️ L'Arène Dialectique est Prête</span>
                       </h3>
-                      <p className="text-[11px] text-gray-400 leading-tight mb-2 max-w-xs line-clamp-2">
-                        Les orateurs synthétiques sont prêts. Cliquez sur le bouton ci-dessous pour amorcer les débats.
+                      <p className="text-[11px] text-gray-400 leading-tight mb-2 max-w-xs">
+                        Les répliques apparaîtront ici dès que vous lancez le débat, juste au-dessus.
                       </p>
-                      <button 
-                        onClick={handleStart} 
-                        className="flex items-center gap-2 bg-[#00f5c4] hover:bg-[#00e0b0] text-black border-none font-bold text-xs sm:text-sm px-4 py-1.5 rounded-lg shadow-lg shadow-[#00f5c4]/30 transition-all cursor-pointer uppercase tracking-wider ring-2 ring-[#00f5c4]/50"
-                      >
-                        <Play className="w-3.5 h-3.5 fill-current text-black" />
-                        <span>Lancer le débat</span>
-                      </button>
                     </div>
                   )}
 
@@ -2831,15 +3053,6 @@ export default function AIDebate() {
               <div className="border border-white/[0.08] p-1 px-1.5 bg-[#0a0a0d]/95 backdrop-blur-md rounded-lg flex items-center justify-between gap-1.5 flex-wrap shrink-0 shadow-lg">
                 
                 <div className="flex flex-wrap items-center gap-2">
-                  {phase === "idle" && (
-                    <button 
-                      onClick={handleStart} 
-                      className="flex items-center gap-2 bg-[#00f5c4] hover:bg-[#00e0b0] text-black border-none font-bold text-xs sm:text-sm px-4 py-1.5 rounded-lg shadow-lg shadow-[#00f5c4]/30 transition-all cursor-pointer uppercase tracking-wider ring-2 ring-[#00f5c4]/50"
-                    >
-                      <Play className="w-3.5 h-3.5 fill-current text-black" />
-                      <span>Lancer le débat</span>
-                    </button>
-                  )}
 
                   {phase === "running" && (
                     <button 
