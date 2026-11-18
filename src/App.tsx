@@ -1,4 +1,5 @@
 import * as React from "react";
+import { useContextualFeedback } from "./labo-avis/useContextualFeedback";
 import { useState, useEffect, useRef, useCallback } from "react";
 import { 
   Play, 
@@ -644,6 +645,13 @@ export default function AIDebate() {
     try { localStorage.setItem("iadebat_config_solo", JSON.stringify(configSolo)); } catch {}
   }, [configSolo]);
   const soloRef = useRef<ConfigSolo | null>(null);
+  // Laboratoire alphabette.eu : micro-sondage « débat terminé » (rien hors d'alphabette.eu, voir src/labo-avis/).
+  const { declencher: sondageDebatTermine, sondage: sondageDebat } = useContextualFeedback("debat_termine", {
+    question: "Ce débat vous a plu ?",
+  });
+  useEffect(() => {
+    if (phase === "closed" && messages.length > 0) sondageDebatTermine();
+  }, [phase, messages.length, sondageDebatTermine]);
   const [soloActif, setSoloActif] = useState(false);
   /** Clés enregistrées sur cet appareil (une seule servira à toutes les voix). */
   const clesDisponibles = AGENTS.filter(a => (a.id === "mistral" ? apiKeys.mistral || alphabetteAccount?.mistralApiKey : (apiKeys as any)[a.id]));
@@ -1572,6 +1580,7 @@ export default function AIDebate() {
 
   return (
     <div className="min-h-screen flex flex-col bg-[#050505] text-[#f3f4f6] font-sans relative">
+      {sondageDebat}
       <AlphabetteTopNav
         account={alphabetteAccount}
         quotaInfo={{ ...quotaStatus, isMembre: quotaStatus.isMembre || Boolean(membreAlphabette) }}
