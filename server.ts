@@ -81,78 +81,32 @@ function formatErrorSummary(err: any): string {
   }
 }
 
-// Multi-tier model cascade for high demand, ultra-low latency and 503 resilience
-const GEMINI_TEXT_MODELS = [
-  "gemini-3.1-flash-lite",
-  "gemini-flash-latest",
-  "gemini-3.8-flash"
-];
-
+// Appel Gemini sur UN modèle (le choix automatique du modèle est fait par appelerIA).
+// Deux essais rapides si Google est momentanément saturé.
 async function generateWithGemini(
   ai: GoogleGenAI,
-  request: {
-    contents: string;
-    config?: any;
-  },
-  preferredModel?: string
+  request: { contents: string; config?: any },
+  model: string
 ): Promise<{ text: string; modelUsed: string }> {
   let lastError: any = null;
-  const modelsToTry = preferredModel 
-    ? (GEMINI_TEXT_MODELS.includes(preferredModel) 
-        ? [preferredModel, ...GEMINI_TEXT_MODELS.filter(m => m !== preferredModel)] 
-        : [preferredModel, ...GEMINI_TEXT_MODELS])
-    : GEMINI_TEXT_MODELS;
-
-  for (const model of modelsToTry) {
-    for (let attempt = 0; attempt < 2; attempt++) {
-      try {
-        const timeoutPromise = new Promise<{ text: string; modelUsed: string }>((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout réponse")), 25000)
-        );
-
-        const apiPromise = ai.models.generateContent({
-          model,
-          contents: request.contents,
-          config: request.config,
-        }).then(response => {
-          if (response && response.text) {
-            return { text: response.text, modelUsed: model };
-          }
-          throw new Error("Réponse vide");
-        });
-
-        const result = await Promise.race([apiPromise, timeoutPromise]);
-        return result;
-      } catch (err: any) {
-        lastError = err;
-
-        // If API key is rejected or quota/billing limit reached, fail fast immediately
-        if (isApiKeyError(err)) {
-          throw err;
-        }
-
-        const msg = String(err?.message || JSON.stringify(err) || "").toLowerCase();
-        const isTransient =
-          msg.includes("timeout") ||
-          msg.includes("503") ||
-          msg.includes("high demand") ||
-          msg.includes("unavailable") ||
-          msg.includes("overloaded") ||
-          msg.includes("spikes in demand");
-
-        if (isTransient) {
-          console.warn(`[IADÉBAT SERVER] Modèle ${model} lent ou temporairement indisponible (essai ${attempt + 1}/2).`);
-          // Bascule rapide sans long délai
-          await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
-          continue;
-        }
-
-        // Try next model in cascade immediately
-        break;
-      }
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const timeoutPromise = new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Timeout réponse")), 25000));
+      const response: any = await Promise.race([
+        ai.models.generateContent({ model, contents: request.contents, config: request.config }),
+        timeoutPromise,
+      ]);
+      if (response && response.text) return { text: response.text, modelUsed: model };
+      throw new Error("Réponse vide");
+    } catch (err: any) {
+      lastError = err;
+      if (isApiKeyError(err)) throw err;
+      const msg = String(err?.message || JSON.stringify(err) || "").toLowerCase();
+      const isTransient = /timeout|503|high demand|unavailable|overloaded|spikes in demand/.test(msg);
+      if (!isTransient) break;
+      await new Promise((r) => setTimeout(r, 150 * (attempt + 1)));
     }
   }
-
   throw lastError;
 }
 
@@ -405,13 +359,13 @@ const MESSAGE_SANS_CLE =
 
 type IdOrateur = "chatgpt" | "claude" | "gemini" | "deepseek" | "mistral" | "grok";
 
-const CLES_IA: Record<IdOrateur, { entete: string; modele: string; defaut: string; nom: string; fournisseur: string }> = {
-  mistral: { entete: "x-mistral-api-key", modele: "x-mistral-model", defaut: "mistral-large-latest", nom: "Mistral", fournisseur: "mistral" },
-  gemini: { entete: "x-gemini-api-key", modele: "x-gemini-model", defaut: "gemini-3.1-flash-lite", nom: "Gemini", fournisseur: "gemini" },
-  claude: { entete: "x-anthropic-api-key", modele: "x-anthropic-model", defaut: "claude-haiku-5-5", nom: "Claude", fournisseur: "anthropic" },
-  chatgpt: { entete: "x-openai-api-key", modele: "x-openai-model", defaut: "gpt-6-luna", nom: "ChatGPT", fournisseur: "openai" },
-  deepseek: { entete: "x-deepseek-api-key", modele: "x-deepseek-model", defaut: "deepseek-chat", nom: "DeepSeek", fournisseur: "deepseek" },
-  grok: { entete: "x-grok-api-key", modele: "x-grok-model", defaut: "grok-4.3", nom: "Grok", fournisseur: "grok" },
+const CLES_IA: Record<IdOrateur, { entete: string; nom: string; fournisseur: string }> = {
+  mistral: { entete: "x-mistral-api-key", nom: "Mistral", fournisseur: "mistral" },
+  gemini: { entete: "x-gemini-api-key", nom: "Gemini", fournisseur: "gemini" },
+  claude: { entete: "x-anthropic-api-key", nom: "Claude", fournisseur: "anthropic" },
+  chatgpt: { entete: "x-openai-api-key", nom: "ChatGPT", fournisseur: "openai" },
+  deepseek: { entete: "x-deepseek-api-key", nom: "DeepSeek", fournisseur: "deepseek" },
+  grok: { entete: "x-grok-api-key", nom: "Grok", fournisseur: "grok" },
 };
 
 // Quand l'orateur n'a pas de clé, une autre IA dont la clé est enregistrée écrit
@@ -439,7 +393,145 @@ const COMPATIBLES_OPENAI: Partial<Record<IdOrateur, string>> = {
   grok: "https://api.x.ai/v1/chat/completions",
 };
 
-async function appelerIA(
+// ─── Choix automatique du modèle ────────────────────────────────────────────
+// L'utilisateur ne donne que sa clé. Les modèles changent souvent (anciens
+// retirés, nouveaux sortis) : on essaie d'abord le dernier modèle qui a marché
+// avec cette clé, puis des noms « stables » ; si le fournisseur répond « modèle
+// introuvable », on lui demande la liste de ses modèles disponibles pour cette
+// clé et on prend le plus récent adapté. Rien n'est à régler à la main.
+
+const MODELES_DEPART: Record<IdOrateur, string[]> = {
+  mistral: ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest"],
+  gemini: ["gemini-flash-latest", "gemini-flash-lite-latest"],
+  claude: ["claude-haiku-5-5"],
+  chatgpt: ["gpt-6-luna"],
+  deepseek: ["deepseek-chat"],
+  grok: ["grok-4.3"],
+};
+
+const MEMO_MODELES = "iadebat_modeles_auto";
+const modelesRetenus = new Map<string, string>();
+
+function cleMemo(id: IdOrateur, cle: string): string {
+  return `${id}:${cle.slice(-6)}`;
+}
+
+function modeleRetenu(id: IdOrateur, cle: string): string {
+  const k = cleMemo(id, cle);
+  if (modelesRetenus.has(k)) return modelesRetenus.get(k)!;
+  try {
+    const ls = (globalThis as any).localStorage;
+    const m = ls ? JSON.parse(ls.getItem(MEMO_MODELES) || "{}")[k] : "";
+    if (typeof m === "string" && m) modelesRetenus.set(k, m);
+    return typeof m === "string" ? m : "";
+  } catch {
+    return "";
+  }
+}
+
+function retenirModele(id: IdOrateur, cle: string, modele: string) {
+  const k = cleMemo(id, cle);
+  if (modelesRetenus.get(k) === modele) return;
+  modelesRetenus.set(k, modele);
+  try {
+    const ls = (globalThis as any).localStorage;
+    if (!ls) return;
+    const tout = JSON.parse(ls.getItem(MEMO_MODELES) || "{}");
+    tout[k] = modele;
+    ls.setItem(MEMO_MODELES, JSON.stringify(tout));
+  } catch {
+    /* stockage indisponible : on garde en mémoire seulement */
+  }
+}
+
+/** Le fournisseur dit-il que ce modèle n'existe pas / plus (ou n'est pas ouvert à cette clé) ? */
+function modeleIntrouvable(statut: number, texte: string): boolean {
+  const t = texte.toLowerCase();
+  if (statut === 404) return true;
+  if ((statut === 400 || statut === 403 || statut === 422) && /model/.test(t) && /(not.?found|not.?exist|does not exist|invalid|unknown|unsupported|not supported|no access|deprecated|retired|n'existe)/.test(t)) return true;
+  return false;
+}
+
+function versionDe(nom: string): number[] {
+  return (nom.match(/\d+(?:\.\d+)?/g) || []).map(Number);
+}
+
+function plusRecentDabord(a: { id: string; created?: number }, b: { id: string; created?: number }): number {
+  if (a.created && b.created && a.created !== b.created) return b.created - a.created;
+  const va = versionDe(a.id), vb = versionDe(b.id);
+  for (let i = 0; i < Math.max(va.length, vb.length); i++) {
+    const d = (vb[i] ?? -1) - (va[i] ?? -1);
+    if (d) return d;
+  }
+  return a.id.localeCompare(b.id);
+}
+
+/** Classe les modèles : d'abord les gammes préférées (dans l'ordre), chacune du plus récent au plus ancien. */
+function classer(modeles: { id: string; created?: number }[], gammes: RegExp[]): string[] {
+  const tries = [...modeles].sort(plusRecentDabord);
+  const rang = (id: string) => {
+    const i = gammes.findIndex((g) => g.test(id));
+    return i === -1 ? gammes.length : i;
+  };
+  return tries.sort((a, b) => rang(a.id) - rang(b.id)).map((m) => m.id);
+}
+
+/** Demande au fournisseur les modèles disponibles pour cette clé, du plus adapté au moins adapté. */
+async function listerModeles(id: IdOrateur, cle: string): Promise<string[]> {
+  const lire = async (url: string, enTetes: Record<string, string> = {}) => {
+    const r = await fetch(url, { headers: enTetes, signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error(`${CLES_IA[id].nom} : liste des modèles refusée (${r.status}) : ${formatErrorSummary(await r.text())}`);
+    return r.json();
+  };
+  const bearer = { Authorization: `Bearer ${cle}` };
+  const exclus = /(embed|tts|whisper|audio|realtime|transcri|image|dall-e|vision|moderation|search|instruct|ocr|codestral|devstral|video|imagine|computer|robotics|aqa|live|native-audio)/i;
+
+  if (id === "gemini") {
+    const d: any = await lire(`https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=${encodeURIComponent(cle)}`);
+    const liste = (d?.models || [])
+      .filter((m: any) => (m?.supportedGenerationMethods || []).includes("generateContent"))
+      .map((m: any) => ({ id: String(m.name || "").replace(/^models\//, "") }))
+      .filter((m: any) => /^gemini/.test(m.id) && !exclus.test(m.id) && !/(exp|preview|thinking)/.test(m.id));
+    return classer(liste, [/flash-latest$/, /flash-lite-latest$/, /flash(?!-lite)/, /flash-lite/, /pro/]);
+  }
+  if (id === "claude") {
+    const d: any = await lire("https://api.anthropic.com/v1/models?limit=100", { "x-api-key": cle, "anthropic-version": "2023-06-01" });
+    // Anthropic renvoie déjà la liste du plus récent au plus ancien : on garde cet ordre.
+    const liste = (d?.data || []).map((m: any, i: number) => ({ id: String(m.id), created: 1e9 - i }));
+    return classer(liste, [/haiku/, /sonnet/, /opus/]);
+  }
+  const adresses: Partial<Record<IdOrateur, string>> = {
+    chatgpt: "https://api.openai.com/v1/models",
+    mistral: "https://api.mistral.ai/v1/models",
+    deepseek: "https://api.deepseek.com/models",
+    grok: "https://api.x.ai/v1/models",
+  };
+  const d: any = await lire(adresses[id]!, bearer);
+  let liste: { id: string; created?: number }[] = (d?.data || [])
+    .filter((m: any) => m?.id && (id !== "mistral" || m?.capabilities?.completion_chat !== false))
+    .map((m: any) => ({ id: String(m.id), created: Number(m.created) || undefined }))
+    .filter((m) => !exclus.test(m.id));
+  if (id === "chatgpt") {
+    liste = liste.filter((m) => /^(gpt|o\d|chatgpt)/.test(m.id) && !/(\d{4}-\d{2}-\d{2}|preview|oss|codex|nano)/.test(m.id));
+    return classer(liste, [/mini/, /./]);
+  }
+  if (id === "mistral") return classer(liste, [/^mistral-large-latest$/, /^mistral-medium-latest$/, /-latest$/, /large/, /medium/, /small/]);
+  if (id === "deepseek") return classer(liste, [/^deepseek-chat$/, /chat/, /./]);
+  // Grok
+  liste = liste.filter((m) => /grok/.test(m.id));
+  return classer(liste, [/latest$/, /fast/, /./]);
+}
+
+/** Erreur d'un fournisseur ; `modeleIntrouvable` indique qu'il faut essayer un autre modèle. */
+class ErreurIA extends Error {
+  modeleIntrouvable: boolean;
+  constructor(message: string, modeleIntrouvable: boolean) {
+    super(message);
+    this.modeleIntrouvable = modeleIntrouvable;
+  }
+}
+
+async function appelerAvecModele(
   id: IdOrateur,
   cle: string,
   modele: string,
@@ -451,12 +543,17 @@ async function appelerIA(
   const nom = CLES_IA[id].nom;
 
   if (id === "gemini") {
-    const r = await generateWithGemini(
-      new GoogleGenAI({ apiKey: cle }),
-      { contents: prompt, config: { systemInstruction: systeme, temperature, maxOutputTokens: maxTokens } },
-      modele
-    );
-    return { text: r.text, modelUsed: r.modelUsed };
+    try {
+      return await generateWithGemini(
+        new GoogleGenAI({ apiKey: cle }),
+        { contents: prompt, config: { systemInstruction: systeme, temperature, maxOutputTokens: maxTokens } },
+        modele
+      );
+    } catch (err: any) {
+      const msg = String(err?.message || err || "");
+      const statut = Number(err?.status || err?.code) || (/\b404\b|not[_ ]found/i.test(msg) ? 404 : 0);
+      throw new ErreurIA(`${nom} : ${formatErrorSummary(err)}`, !isApiKeyError(err) && modeleIntrouvable(statut, msg));
+    }
   }
 
   let url = "";
@@ -490,14 +587,62 @@ async function appelerIA(
 
   const reponse = await fetch(url, { method: "POST", signal: AbortSignal.timeout(30000), headers: enTetes, body: JSON.stringify(corps) });
   if (!reponse.ok) {
-    throw new Error(`${nom} a refusé la demande (${reponse.status}) : ${formatErrorSummary(await reponse.text())}`);
+    const texte = await reponse.text();
+    throw new ErreurIA(`${nom} a refusé la demande (${reponse.status}) : ${formatErrorSummary(texte)}`, modeleIntrouvable(reponse.status, texte));
   }
   const data = await reponse.json();
   const texte =
     id === "claude"
       ? (Array.isArray(data?.content) ? data.content.find((b: any) => b?.type === "text" && b.text)?.text : "") || ""
       : data?.choices?.[0]?.message?.content || "";
-  return { text: String(texte), modelUsed: modele };
+  return { text: String(texte), modelUsed: String(data?.model || modele) };
+}
+
+/** Fait répondre l'IA `id` avec la clé donnée, en choisissant le modèle tout seul. */
+async function appelerIA(
+  id: IdOrateur,
+  cle: string,
+  systeme: string,
+  prompt: string,
+  maxTokens: number,
+  temperature: number
+): Promise<{ text: string; modelUsed: string }> {
+  const essayes = new Set<string>();
+  let derniere: any = null;
+
+  const essayer = async (modele: string) => {
+    essayes.add(modele);
+    const r = await appelerAvecModele(id, cle, modele, systeme, prompt, maxTokens, temperature);
+    retenirModele(id, cle, modele);
+    return r;
+  };
+
+  for (const modele of [modeleRetenu(id, cle), ...MODELES_DEPART[id]]) {
+    if (!modele || essayes.has(modele)) continue;
+    try {
+      return await essayer(modele);
+    } catch (err: any) {
+      if (!(err instanceof ErreurIA) || !err.modeleIntrouvable) throw err;
+      derniere = err;
+    }
+  }
+
+  // Aucun nom connu ne marche : on demande au fournisseur ce qui est ouvert à cette clé.
+  let disponibles: string[] = [];
+  try {
+    disponibles = await listerModeles(id, cle);
+  } catch (err: any) {
+    console.warn(`[IADÉBAT] ${formatErrorSummary(err)}`);
+  }
+  for (const modele of disponibles.filter((m) => !essayes.has(m)).slice(0, 4)) {
+    try {
+      return await essayer(modele);
+    } catch (err: any) {
+      if (!(err instanceof ErreurIA) || !err.modeleIntrouvable) throw err;
+      derniere = err;
+    }
+  }
+  throw derniere || new Error(`${CLES_IA[id].nom} : aucun modèle disponible pour cette clé.`);
 }
 
 interface TexteEcrit {
@@ -527,8 +672,7 @@ async function ecrireAvecLesCles(
   const echecs: string[] = [];
   for (const id of disponibles) {
     try {
-      const modele = lireEntete(headers, CLES_IA[id].modele) || CLES_IA[id].defaut;
-      const r = await appelerIA(id, cleDe(headers, id), modele, systeme, prompt, options.maxTokens, options.temperature ?? 0.85);
+      const r = await appelerIA(id, cleDe(headers, id), systeme, prompt, options.maxTokens, options.temperature ?? 0.85);
       if (r.text.trim()) {
         return {
           text: r.text,
@@ -608,161 +752,17 @@ Le retour doit être un tableau JSON valide. Ne renvoie AUCUN texte introductif 
   }
 });
 
-// Test API Key and its assigned model directly
+// Test d'une clé : même chemin que le débat (modèle choisi automatiquement).
 app.post("/api/debate/test-key", async (req, res) => {
-  const { provider, model, key } = req.body;
+  const { provider, key } = req.body || {};
   const startTime = Date.now();
-
+  if (!key || typeof key !== "string" || !key.trim()) {
+    return res.status(400).json({ success: false, error: "Clé API absente ou invalide." });
+  }
+  if (!(provider in CLES_IA)) return res.status(400).json({ success: false, error: "Fournisseur non reconnu." });
   try {
-    if (!key || typeof key !== "string" || !key.trim()) {
-      return res.status(400).json({ success: false, error: "Clé API absente ou invalide." });
-    }
-
-    const cleanKey = key.trim();
-
-    if (provider === "chatgpt") {
-      const modelToUse = model || "gpt-6-luna";
-      const response = await fetch("https://api.openai.com/v1/chat/completions", {
-        method: "POST",
-        signal: AbortSignal.timeout(6000),
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${cleanKey}`
-        },
-        body: JSON.stringify({
-          model: modelToUse,
-          max_completion_tokens: 300,
-          messages: [{ role: "user", content: "Réponds simplement 'Test réussi'." }]
-        })
-      });
-      const latency = Date.now() - startTime;
-      if (response.ok) {
-        const data = await response.json();
-        const reply = data?.choices?.[0]?.message?.content?.trim() || "OK";
-        return res.json({ success: true, provider, modelUsed: modelToUse, latencyMs: latency, reply });
-      } else {
-        const errText = await response.text();
-        return res.json({ success: false, provider, modelUsed: modelToUse, error: `Erreur OpenAI (${response.status}): ${formatErrorSummary(errText)}` });
-      }
-    }
-
-    if (provider === "claude") {
-      const modelToUse = model || "claude-haiku-5-5";
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        signal: AbortSignal.timeout(6000),
-        headers: {
-          "Content-Type": "application/json",
-          "x-api-key": cleanKey,
-          "anthropic-version": "2023-06-01"
-        },
-        body: JSON.stringify({
-          model: modelToUse,
-          max_tokens: 300,
-          messages: [{ role: "user", content: "Réponds simplement 'Test réussi'." }]
-        })
-      });
-      const latency = Date.now() - startTime;
-      if (response.ok) {
-        const data = await response.json();
-        const reply = (Array.isArray(data?.content) ? data.content.find((b: any) => b?.type === "text")?.text : "")?.trim() || "OK";
-        return res.json({ success: true, provider, modelUsed: modelToUse, latencyMs: latency, reply });
-      } else {
-        const errText = await response.text();
-        return res.json({ success: false, provider, modelUsed: modelToUse, error: `Erreur Anthropic (${response.status}): ${formatErrorSummary(errText)}` });
-      }
-    }
-
-    if (provider === "gemini") {
-      const modelToUse = model || "gemini-3.1-flash-lite";
-      const ai = new GoogleGenAI({ apiKey: cleanKey });
-      const resp = await ai.models.generateContent({
-        model: modelToUse,
-        contents: "Réponds simplement 'Test réussi'."
-      });
-      const latency = Date.now() - startTime;
-      return res.json({ success: true, provider, modelUsed: modelToUse, latencyMs: latency, reply: resp?.text?.trim() || "OK" });
-    }
-
-    if (provider === "deepseek") {
-      const modelToUse = model || "deepseek-chat";
-      const response = await fetch("https://api.deepseek.com/chat/completions", {
-        method: "POST",
-        signal: AbortSignal.timeout(6000),
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${cleanKey}`
-        },
-        body: JSON.stringify({
-          model: modelToUse,
-          max_tokens: 15,
-          messages: [{ role: "user", content: "Réponds simplement 'Test réussi'." }]
-        })
-      });
-      const latency = Date.now() - startTime;
-      if (response.ok) {
-        const data = await response.json();
-        const reply = data?.choices?.[0]?.message?.content?.trim() || "OK";
-        return res.json({ success: true, provider, modelUsed: modelToUse, latencyMs: latency, reply });
-      } else {
-        const errText = await response.text();
-        return res.json({ success: false, provider, modelUsed: modelToUse, error: `Erreur DeepSeek (${response.status}): ${formatErrorSummary(errText)}` });
-      }
-    }
-
-    if (provider === "mistral") {
-      const modelToUse = model || "mistral-large-latest";
-      const response = await fetch("https://api.mistral.ai/v1/chat/completions", {
-        method: "POST",
-        signal: AbortSignal.timeout(6000),
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${cleanKey}`
-        },
-        body: JSON.stringify({
-          model: modelToUse,
-          max_tokens: 15,
-          messages: [{ role: "user", content: "Réponds simplement 'Test réussi'." }]
-        })
-      });
-      const latency = Date.now() - startTime;
-      if (response.ok) {
-        const data = await response.json();
-        const reply = data?.choices?.[0]?.message?.content?.trim() || "OK";
-        return res.json({ success: true, provider, modelUsed: modelToUse, latencyMs: latency, reply });
-      } else {
-        const errText = await response.text();
-        return res.json({ success: false, provider, modelUsed: modelToUse, error: `Erreur Mistral (${response.status}): ${formatErrorSummary(errText)}` });
-      }
-    }
-
-    if (provider === "grok") {
-      const modelToUse = model || "grok-4.3";
-      const response = await fetch("https://api.x.ai/v1/chat/completions", {
-        method: "POST",
-        signal: AbortSignal.timeout(6000),
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${cleanKey}`
-        },
-        body: JSON.stringify({
-          model: modelToUse,
-          max_tokens: 15,
-          messages: [{ role: "user", content: "Réponds simplement 'Test réussi'." }]
-        })
-      });
-      const latency = Date.now() - startTime;
-      if (response.ok) {
-        const data = await response.json();
-        const reply = data?.choices?.[0]?.message?.content?.trim() || "OK";
-        return res.json({ success: true, provider, modelUsed: modelToUse, latencyMs: latency, reply });
-      } else {
-        const errText = await response.text();
-        return res.json({ success: false, provider, modelUsed: modelToUse, error: `Erreur Grok (${response.status}): ${formatErrorSummary(errText)}` });
-      }
-    }
-
-    return res.status(400).json({ success: false, error: "Fournisseur non reconnu." });
+    const r = await appelerIA(provider as IdOrateur, key.trim(), "Tu réponds en français, très brièvement.", "Réponds simplement « Test réussi ».", 300, 0.2);
+    return res.json({ success: true, provider, modelUsed: r.modelUsed, latencyMs: Date.now() - startTime, reply: r.text.trim() || "OK" });
   } catch (err: any) {
     return res.json({ success: false, provider, error: formatErrorSummary(err) });
   }

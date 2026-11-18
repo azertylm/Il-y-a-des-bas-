@@ -31,8 +31,6 @@ export interface ApiProviderConfig {
   keyLink: string;
   docsLink: string;
   placeholder: string;
-  defaultModel: string;
-  recommendedModels: { id: string; label: string; tag: string }[];
 }
 
 export const PROVIDERS_CONFIG: ApiProviderConfig[] = [
@@ -46,12 +44,6 @@ export const PROVIDERS_CONFIG: ApiProviderConfig[] = [
     keyLink: "https://platform.openai.com/api-keys",
     docsLink: "https://platform.openai.com/docs/models",
     placeholder: "sk-proj-...",
-    defaultModel: "gpt-6-luna",
-    recommendedModels: [
-      { id: "gpt-6-luna", label: "GPT-6 Luna (rapide, le moins cher)", tag: "Par défaut" },
-      { id: "gpt-6.1-sol", label: "GPT-6.1 Sol (équilibre qualité / prix)", tag: "Équilibré" },
-      { id: "gpt-6-astra", label: "GPT-6 Astra (le plus puissant, le plus cher)", tag: "Haut de gamme" },
-    ]
   },
   {
     id: "claude",
@@ -63,12 +55,6 @@ export const PROVIDERS_CONFIG: ApiProviderConfig[] = [
     keyLink: "https://console.anthropic.com/settings/keys",
     docsLink: "https://platform.claude.com/docs/en/models/overview",
     placeholder: "sk-ant-...",
-    defaultModel: "claude-haiku-5-5",
-    recommendedModels: [
-      { id: "claude-haiku-5-5", label: "Claude Haiku 5.5 (le plus rapide, le moins cher)", tag: "Par défaut" },
-      { id: "claude-sonnet-5-5", label: "Claude Sonnet 5.5 (équilibre vitesse / qualité)", tag: "Équilibré" },
-      { id: "claude-opus-5-5", label: "Claude Opus 5.5 (le plus puissant, plus cher)", tag: "Haut de gamme" },
-    ]
   },
   {
     id: "gemini",
@@ -80,12 +66,6 @@ export const PROVIDERS_CONFIG: ApiProviderConfig[] = [
     keyLink: "https://aistudio.google.com/app/apikey",
     docsLink: "https://ai.google.dev/gemini-api/docs/models/gemini",
     placeholder: "AIzaSy...",
-    defaultModel: "gemini-3.1-flash-lite",
-    recommendedModels: [
-      { id: "gemini-3.1-flash-lite", label: "Gemini 3.1 Flash-Lite (Temps réel éclair)", tag: "Par défaut" },
-      { id: "gemini-flash-latest", label: "Gemini Flash Latest (Dernière version automatique)", tag: "Évolutif" },
-      { id: "gemini-3.8-flash", label: "Gemini 3.8 Flash (Vision prospective & puissance)", tag: "Haute capacité" },
-    ]
   },
   {
     id: "deepseek",
@@ -97,11 +77,6 @@ export const PROVIDERS_CONFIG: ApiProviderConfig[] = [
     keyLink: "https://platform.deepseek.com/api_keys",
     docsLink: "https://api-docs.deepseek.com/quick_start/pricing",
     placeholder: "sk-...",
-    defaultModel: "deepseek-chat",
-    recommendedModels: [
-      { id: "deepseek-chat", label: "DeepSeek-V3 / Chat (Rigueur mathématique & code)", tag: "Par défaut" },
-      { id: "deepseek-reasoner", label: "DeepSeek-R1 / Reasoner (Raisonnement pas à pas)", tag: "Nouveau" },
-    ]
   },
   {
     id: "mistral",
@@ -113,12 +88,6 @@ export const PROVIDERS_CONFIG: ApiProviderConfig[] = [
     keyLink: "https://console.mistral.ai/api-keys/",
     docsLink: "https://docs.mistral.ai/getting-started/models/",
     placeholder: "...",
-    defaultModel: "mistral-large-latest",
-    recommendedModels: [
-      { id: "mistral-large-latest", label: "Mistral Large Latest (Dernière version souveraine)", tag: "Évolutif" },
-      { id: "mistral-small-latest", label: "Mistral Small Latest (Haute vitesse & concision)", tag: "Rapide" },
-      { id: "codestral-latest", label: "Codestral Latest (Précision formelle)", tag: "Spécialisé" },
-    ]
   },
   {
     id: "grok",
@@ -130,11 +99,6 @@ export const PROVIDERS_CONFIG: ApiProviderConfig[] = [
     keyLink: "https://console.x.ai/",
     docsLink: "https://docs.x.ai/docs/models",
     placeholder: "xai-...",
-    defaultModel: "grok-4.3",
-    recommendedModels: [
-      { id: "grok-4.3", label: "Grok 4.3 (le moins cher)", tag: "Par défaut" },
-      { id: "grok-4.7", label: "Grok 4.7 (le plus récent, plus cher)", tag: "Haut de gamme" },
-    ]
   }
 ];
 
@@ -142,9 +106,7 @@ interface ApiKeysAndModelsModalProps {
   isOpen: boolean;
   onClose: () => void;
   apiKeys: { [key: string]: string };
-  apiModels: { [key: string]: string };
   onSaveApiKey: (providerId: string, value: string) => void;
-  onSaveApiModel: (providerId: string, value: string) => void;
   onResetAllKeys: () => void;
 }
 
@@ -152,14 +114,11 @@ export function ApiKeysAndModelsModal({
   isOpen,
   onClose,
   apiKeys,
-  apiModels,
   onSaveApiKey,
-  onSaveApiModel,
   onResetAllKeys,
 }: ApiKeysAndModelsModalProps) {
   const [activeTab, setActiveTab] = useState<"keys" | "evolution" | "freedom">("keys");
   const [visibleKeys, setVisibleKeys] = useState<{ [key: string]: boolean }>({});
-  const [customModelInputs, setCustomModelInputs] = useState<{ [key: string]: string }>({});
   const [testResults, setTestResults] = useState<{
     [key: string]: {
       loading: boolean;
@@ -191,8 +150,6 @@ export function ApiKeysAndModelsModal({
       return;
     }
 
-    const currentModel = apiModels[provider.id] || provider.defaultModel;
-
     setTestResults(prev => ({
       ...prev,
       [provider.id]: { loading: true }
@@ -204,7 +161,6 @@ export function ApiKeysAndModelsModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           provider: provider.id,
-          model: currentModel,
           key: key.trim()
         })
       });
@@ -227,7 +183,7 @@ export function ApiKeysAndModelsModal({
           [provider.id]: {
             loading: false,
             success: false,
-            modelUsed: data.modelUsed || currentModel,
+            modelUsed: data.modelUsed,
             error: data.error || "Échec de connexion"
           }
         }));
@@ -259,14 +215,14 @@ export function ApiKeysAndModelsModal({
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="font-condensed font-bold text-lg text-white uppercase tracking-wider">
-                  Clés API, Modèles & Liberté d'Expression
+                  Clés API & Liberté d'Expression
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-[#00f5c4]/15 text-[#00f5c4] border border-[#00f5c4]/30">
                   {activeKeysCount} / 6 clés actives
                 </span>
               </div>
               <p className="text-xs text-gray-400">
-                Vos clés restent dans ce navigateur. Choisissez aussi le modèle de chaque IA.
+                Vos clés restent dans ce navigateur. Le modèle de chaque IA est choisi automatiquement.
               </p>
             </div>
           </div>
@@ -291,7 +247,7 @@ export function ApiKeysAndModelsModal({
             }`}
           >
             <Key className="w-4 h-4" />
-            <span>Clés & Modèles Évolutifs</span>
+            <span>Clés API</span>
           </button>
 
           <button
@@ -350,7 +306,6 @@ export function ApiKeysAndModelsModal({
                 {PROVIDERS_CONFIG.map(provider => {
                   const keyVal = apiKeys[provider.id] || "";
                   const hasKey = keyVal.trim().length > 0;
-                  const currentModel = apiModels[provider.id] || provider.defaultModel;
                   const testState = testResults[provider.id];
                   const isVisible = visibleKeys[provider.id];
 
@@ -425,75 +380,10 @@ export function ApiKeysAndModelsModal({
                           </div>
                         </div>
 
-                        {/* SÉLECTEUR DE MODÈLE ÉVOLUTIF */}
-                        <div className="space-y-1.5 mb-3">
-                          <div className="flex items-center justify-between text-[11px]">
-                            <label className="text-gray-400 font-medium flex items-center gap-1">
-                              <Cpu className="w-3 h-3 text-[#00f5c4]" />
-                              <span>Version du Modèle :</span>
-                            </label>
-                            <a
-                              href={provider.docsLink}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="text-gray-500 hover:text-gray-300 flex items-center gap-0.5 hover:underline text-[10px]"
-                              title="Voir les nouveaux modèles sortis par ce constructeur"
-                            >
-                              <span>Doc modèles</span>
-                              <ExternalLink className="w-2.5 h-2.5" />
-                            </a>
-                          </div>
-
-                          <select
-                            value={
-                              provider.recommendedModels.some(m => m.id === currentModel)
-                                ? currentModel
-                                : "custom"
-                            }
-                            onChange={e => {
-                              const val = e.target.value;
-                              if (val === "custom") {
-                                // Garde la valeur personnalisée
-                                if (!customModelInputs[provider.id]) {
-                                  setCustomModelInputs(prev => ({ ...prev, [provider.id]: currentModel }));
-                                }
-                              } else {
-                                onSaveApiModel(provider.id, val);
-                              }
-                            }}
-                            className="w-full bg-black/60 border border-white/10 rounded-lg px-2.5 py-1.5 text-xs text-gray-200 focus:outline-none focus:border-[#00f5c4] cursor-pointer"
-                          >
-                            {provider.recommendedModels.map(m => (
-                              <option key={m.id} value={m.id} className="bg-[#121217] text-white">
-                                {m.label}
-                              </option>
-                            ))}
-                            <option value="custom" className="bg-[#121217] text-[#00f5c4] font-bold">
-                              ✏️ Modèle personnalisé (nouveau modèle sorti...)
-                            </option>
-                          </select>
-
-                          {/* CHAMP DE SAISIE LIBRE SI MODÈLE PERSONNALISÉ */}
-                          {(!provider.recommendedModels.some(m => m.id === currentModel) ||
-                            customModelInputs[provider.id] !== undefined) && (
-                            <div className="mt-1.5 flex gap-1.5 animate-fadeIn">
-                              <input
-                                type="text"
-                                placeholder={`Ex: ${provider.defaultModel}`}
-                                value={currentModel}
-                                onChange={e => onSaveApiModel(provider.id, e.target.value)}
-                                className="flex-1 bg-black/80 border border-[#00f5c4]/40 rounded px-2.5 py-1 text-xs text-[#00f5c4] font-mono focus:outline-none"
-                              />
-                              <button
-                                onClick={() => onSaveApiModel(provider.id, provider.defaultModel)}
-                                className="px-2 py-1 text-[10px] bg-white/5 hover:bg-white/10 rounded text-gray-400 hover:text-white cursor-pointer"
-                                title="Réinitialiser au modèle standard"
-                              >
-                                Défaut
-                              </button>
-                            </div>
-                          )}
-                        </div>
+                        <p className="text-[10px] text-gray-500 mb-3 flex items-center gap-1">
+                          <Cpu className="w-3 h-3 text-[#00f5c4] shrink-0" />
+                          <span>Modèle choisi automatiquement : toujours un modèle disponible pour votre clé.</span>
+                        </p>
                       </div>
 
                       {/* PIED DE CARTE & TEST */}
@@ -504,7 +394,7 @@ export function ApiKeysAndModelsModal({
                           className="px-3 py-1 rounded bg-white/5 hover:bg-white/10 border border-white/10 text-xs font-semibold text-gray-300 hover:text-white flex items-center gap-1.5 cursor-pointer transition-all disabled:opacity-50"
                         >
                           <RefreshCw className={`w-3 h-3 ${testState?.loading ? "animate-spin text-[#00f5c4]" : ""}`} />
-                          <span>{testState?.loading ? "Test en cours..." : "Tester la clé & le modèle"}</span>
+                          <span>{testState?.loading ? "Test en cours..." : "Tester la clé"}</span>
                         </button>
 
                         <div className="text-right min-w-0 flex-1">
@@ -515,7 +405,7 @@ export function ApiKeysAndModelsModal({
                           {testState?.success && (
                             <span className="text-[10px] text-emerald-400 font-bold flex items-center justify-end gap-1 truncate">
                               <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
-                              <span>Opérationnel ({testState.latencyMs} ms)</span>
+                              <span>Opérationnel{testState.modelUsed ? ` · ${testState.modelUsed}` : ""} ({testState.latencyMs} ms)</span>
                             </span>
                           )}
 
@@ -692,19 +582,17 @@ export function ApiKeysAndModelsModal({
                     <span>Votre clé API est pérenne : elle ne périme pas quand une nouvelle IA sort</span>
                   </div>
                   <p className="text-gray-400 leading-relaxed pl-7">
-                    Une clé API OpenAI, Google ou Anthropic est rattachée à votre compte développeur, pas à un modèle unique. Lorsque OpenAI lance <em>GPT-4.5</em> ou qu'Anthropic lance <em>Claude 3.7</em>, <strong>votre clé actuelle vous ouvre automatiquement l'accès</strong> à ces nouveaux cerveaux sans avoir besoin d'en créer une nouvelle !
+                    Une clé API OpenAI, Google ou Anthropic est rattachée à votre compte développeur, pas à un modèle unique. Quand un fournisseur sort un nouveau modèle, <strong>votre clé actuelle vous ouvre automatiquement l'accès</strong> à ces nouveaux cerveaux sans avoir besoin d'en créer une nouvelle !
                   </p>
                 </div>
 
                 <div className="bg-[#121217] border border-white/[0.08] p-4 rounded-xl space-y-1.5">
                   <div className="font-condensed font-bold text-white uppercase text-xs flex items-center gap-2">
                     <span className="w-5 h-5 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center font-bold text-[10px]">2</span>
-                    <span>Comment faire évoluer le modèle utilisé dans l'application ?</span>
+                    <span>Rien à régler quand un nouveau modèle sort</span>
                   </div>
                   <p className="text-gray-400 leading-relaxed pl-7">
-                    Dans l'onglet <strong>« Clés & Modèles Évolutifs »</strong> de cette fenêtre :
-                    <br />• Sélectionnez simplement le modèle le plus récent dans le menu déroulant (par exemple <em>Claude 3.7 Sonnet</em> ou <em>Gemini 3.8 Flash</em>).
-                    <br />• Ou choisissez <strong>« Modèle personnalisé »</strong> et écrivez directement le nom du futur modèle qui vient tout juste de sortir ! L'application l'appellera immédiatement.
+                    Vous ne donnez que votre clé. L'application choisit toute seule un modèle disponible pour cette clé. Si un fournisseur retire un modèle, elle demande au fournisseur la liste de ses modèles actuels et prend le plus récent adapté. Le nom du modèle utilisé s'affiche après « Tester la clé ».
                   </p>
                 </div>
 
@@ -714,7 +602,7 @@ export function ApiKeysAndModelsModal({
                     <span>Vérifier vos tiers et vos crédits chez chaque constructeur</span>
                   </div>
                   <p className="text-gray-400 leading-relaxed pl-7">
-                    Certains modèles très avancés (comme les modèles de raisonnement profonds) exigent parfois que votre compte soit approvisionné d'un crédit minimum (ex: 5$ sur OpenAI ou Anthropic). Le bouton <strong>« Tester la clé & le modèle »</strong> vous indique instantanément si votre clé possède les droits sur le modèle choisi.
+                    Certains modèles très avancés (comme les modèles de raisonnement profonds) exigent parfois que votre compte soit approvisionné d'un crédit minimum (ex: 5$ sur OpenAI ou Anthropic). Le bouton <strong>« Tester la clé »</strong> vous indique instantanément si votre clé fonctionne.
                   </p>
                 </div>
 
@@ -724,9 +612,9 @@ export function ApiKeysAndModelsModal({
                     <span>Recommandations de mise à niveau suggérées aux utilisateurs</span>
                   </div>
                   <p className="text-gray-400 leading-relaxed pl-7">
-                    Pour suggérer à vos collègues ou amis de mettre à jour leurs modèles :
+                    Bon à savoir :
                     <br />• <strong>Google AI Studio</strong> : La clé Gemini gratuite offre un quota généreux pour les débats.
-                    <br />• <strong>OpenAI</strong> et <strong>Anthropic</strong> : les modèles « Équilibré » ou « Haut de gamme » écrivent mieux mais coûtent plus cher sur votre compte ; les prix sont sur le site de chaque fournisseur.
+                    <br />• <strong>OpenAI</strong> et <strong>Anthropic</strong> : l'usage est facturé sur votre compte ; les prix sont sur le site de chaque fournisseur.
                   </p>
                 </div>
               </div>

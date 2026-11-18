@@ -496,7 +496,7 @@ export function AlphabetteAccountModal({
                   <span>Clé Mistral de ce compte</span>
                 </div>
                 <p className="text-xs text-gray-300 leading-relaxed">
-                  Si vous n'avez pas mis de clé Mistral dans « Clés API », celle-ci est utilisée pour Mistral. Elle reste dans ce navigateur et n'est envoyée qu'à Mistral (api.mistral.ai). L'adresse et le modèle ci-dessous ne sont pas utilisés : le modèle se règle dans « Clés API ».
+                  Si vous n'avez pas mis de clé Mistral dans « Clés API », celle-ci est utilisée pour Mistral. Elle reste dans ce navigateur et n'est envoyée qu'à Mistral (api.mistral.ai). L'adresse et le modèle ci-dessous ne sont pas utilisés : le modèle est choisi automatiquement.
                 </p>
               </div>
 

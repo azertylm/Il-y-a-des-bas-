@@ -384,39 +384,11 @@ export default function AIDebate() {
     }
   });
 
-  const [apiModels, setApiModels] = useState<{ [key: string]: string }>(() => {
-    try {
-      const saved = localStorage.getItem("debate_api_models");
-      if (saved) {
-        // Modèles retirés par leurs fournisseurs : remplacés par leur successeur actuel.
-        const retires: { [ancien: string]: string } = {
-          "gpt-4o-mini": "gpt-6-luna", "gpt-4o": "gpt-6.1-sol", "gpt-4.5-preview": "gpt-6.1-sol", "o3-mini": "gpt-6.1-sol",
-          "claude-3-5-haiku-20241022": "claude-haiku-5-5", "claude-3-7-sonnet-latest": "claude-sonnet-5-5", "claude-3-5-sonnet-20241022": "claude-sonnet-5-5",
-          "grok-2-1212": "grok-4.3", "grok-beta": "grok-4.3", "gemini-2.5-pro": "gemini-3.8-flash",
-        };
-        const lus = JSON.parse(saved) as { [key: string]: string };
-        for (const k of Object.keys(lus)) if (retires[lus[k]]) lus[k] = retires[lus[k]];
-        return lus;
-      }
-      return {
-        chatgpt: "gpt-6-luna",
-        claude: "claude-haiku-5-5",
-        gemini: "gemini-3.1-flash-lite",
-        deepseek: "deepseek-chat",
-        mistral: "mistral-large-latest",
-        grok: "grok-4.3"
-      };
-    } catch {
-      return {
-        chatgpt: "gpt-6-luna",
-        claude: "claude-haiku-5-5",
-        gemini: "gemini-3.1-flash-lite",
-        deepseek: "deepseek-chat",
-        mistral: "mistral-large-latest",
-        grok: "grok-4.3"
-      };
-    }
-  });
+  // Le modèle n'est plus choisi à la main : l'appli prend tout seule un modèle
+  // disponible pour la clé (les modèles changent souvent). Ancien réglage effacé.
+  useEffect(() => {
+    try { localStorage.removeItem("debate_api_models"); } catch { /* rien */ }
+  }, []);
 
   const [visibleApiKeyIds, setVisibleApiKeyIds] = useState<{ [key: string]: boolean }>({});
 
@@ -424,12 +396,6 @@ export default function AIDebate() {
     const updated = { ...apiKeys, [agentId]: value };
     setApiKeys(updated);
     localStorage.setItem("debate_api_keys", JSON.stringify(updated));
-  };
-
-  const handleSaveApiModel = (providerId: string, value: string) => {
-    const updated = { ...apiModels, [providerId]: value };
-    setApiModels(updated);
-    localStorage.setItem("debate_api_models", JSON.stringify(updated));
   };
 
   const handleResetAllKeys = () => {
@@ -622,15 +588,8 @@ export default function AIDebate() {
     if (cleMistral) headers["x-mistral-api-key"] = cleMistral;
     if (apiKeys.grok) headers["x-grok-api-key"] = apiKeys.grok;
 
-    if (apiModels.chatgpt) headers["x-openai-model"] = apiModels.chatgpt;
-    if (apiModels.claude) headers["x-anthropic-model"] = apiModels.claude;
-    if (apiModels.gemini) headers["x-gemini-model"] = apiModels.gemini;
-    if (apiModels.deepseek) headers["x-deepseek-model"] = apiModels.deepseek;
-    if (apiModels.mistral) headers["x-mistral-model"] = apiModels.mistral;
-    if (apiModels.grok) headers["x-grok-model"] = apiModels.grok;
-
     return headers;
-  }, [apiKeys, apiModels, alphabetteAccount]);
+  }, [apiKeys, alphabetteAccount]);
 
   // ── Débat IA seul : l'utilisateur choisit la posture de chaque voix ; une seule clé pour toutes ──
   const [isSoloPanelOpen, setIsSoloPanelOpen] = useState(false);
@@ -1702,7 +1661,7 @@ export default function AIDebate() {
           {/* BOUTON CLÉS & MODÈLES IA / LIBERTÉ */}
           <button
             onClick={() => setIsApiKeysModalOpen(true)}
-            title="Gestion des clés API, sélection des modèles récents et garantie de liberté d'opinion"
+            title="Gestion des clés API et garantie de liberté d'opinion"
             className={`hidden sm:flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0 ${
               activeKeysCount > 0
                 ? "bg-[#00f5c4]/15 hover:bg-[#00f5c4]/25 border-[#00f5c4]/40 text-[#00f5c4]"
@@ -1710,7 +1669,7 @@ export default function AIDebate() {
             }`}
           >
             <Cpu className="w-3.5 h-3.5 text-[#00f5c4] shrink-0" />
-            <span>Clés & Modèles</span>
+            <span>Clés API</span>
             {activeKeysCount > 0 ? (
               <span className="w-1.5 h-1.5 rounded-full bg-[#00f5c4] shrink-0 animate-pulse" />
             ) : (
@@ -2118,7 +2077,7 @@ export default function AIDebate() {
                 <div className="flex items-center justify-between">
                   <span className="font-condensed font-bold text-xs tracking-wider uppercase text-gray-300 flex items-center gap-1.5">
                     <Cpu className="w-3.5 h-3.5 text-[#00f5c4]" />
-                    Clés API & Évolution Modèles
+                    Clés API
                   </span>
                   <span className="text-[10px] text-[#00f5c4] font-bold bg-[#00f5c4]/10 px-2 py-0.5 rounded border border-[#00f5c4]/20">
                     {activeKeysCount} / 6 Actives
@@ -2131,7 +2090,7 @@ export default function AIDebate() {
                   className="w-full py-2 px-3 bg-gradient-to-r from-blue-600/20 via-[#00f5c4]/20 to-purple-600/20 hover:from-blue-600/30 hover:to-purple-600/30 border border-[#00f5c4]/40 rounded-lg text-white font-condensed font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md shadow-[#00f5c4]/10"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-[#00f5c4]" />
-                  <span>Ouvrir le Centre Clés & Modèles</span>
+                  <span>Ouvrir les Clés API</span>
                 </button>
 
                 {/* Badge de neutralité doctrinale & liberté */}
@@ -2219,7 +2178,7 @@ export default function AIDebate() {
                           </button>
                         </div>
                         <div className="text-[9px] text-gray-500 flex items-center justify-between">
-                          <span>Modèle : <code className="text-[#00f5c4]">{apiModels[keyDef.id] || "Défaut"}</code></span>
+                          <span>Modèle : choisi automatiquement</span>
                           <button
                             onClick={() => setIsApiKeysModalOpen(true)}
                             className="text-blue-400 hover:underline cursor-pointer bg-transparent border-none p-0 text-[9px]"
@@ -3462,9 +3421,7 @@ export default function AIDebate() {
         isOpen={isApiKeysModalOpen}
         onClose={() => setIsApiKeysModalOpen(false)}
         apiKeys={apiKeys}
-        apiModels={apiModels}
         onSaveApiKey={handleSaveApiKey}
-        onSaveApiModel={handleSaveApiModel}
         onResetAllKeys={handleResetAllKeys}
       />
 
