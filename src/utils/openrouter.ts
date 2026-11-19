@@ -76,6 +76,10 @@ export interface EtatDecouverte {
   actif: boolean;
   quota: number;
   debats_restants: number;
+  /** Mode Gratuit : débats par jour et restants (modèles « :free »). */
+  gratuit?: { quota: number; restants: number };
+  /** Débat Premium offert par jour et restant. */
+  premium?: { quota: number; restants: number };
 }
 
 /** Le Mode Découverte du site est-il ouvert, et combien de débats gratuits reste-t-il aujourd'hui ? */

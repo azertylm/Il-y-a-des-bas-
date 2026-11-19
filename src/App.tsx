@@ -87,7 +87,7 @@ import {
 } from "./utils/alphabetteAuth";
 import { checkAndUpdateQuota, QuotaStatus } from "./utils/alphabetteQuota";
 import { FORMATS_DEBAT, FormatDebat, consigneFormat, CONSIGNE_PLATEAU_TV, sujetsDuJour, dessinerPunchline, partagerImage, podcastDisponible, lireAVoixHaute } from "./utils/scene";
-import { lireCleOpenRouter, enregistrerCleOpenRouter, lireGratuitsOpenRouter, enregistrerGratuitsOpenRouter, terminerConnexionOpenRouter, lireEtatDecouverte, EtatDecouverte } from "./utils/openrouter";
+import { connecterOpenRouter, lireCleOpenRouter, enregistrerCleOpenRouter, lireGratuitsOpenRouter, enregistrerGratuitsOpenRouter, terminerConnexionOpenRouter, lireEtatDecouverte, EtatDecouverte } from "./utils/openrouter";
 import { lireMembre, lienInscription } from "./utils/membreAlphabette";
 
 // ─── THÈMES TEMPORELS PAR DÉFAUT ─────────────────────────────────────────────
@@ -428,6 +428,13 @@ export default function AIDebate() {
       else if (erreur) { setMessageOpenRouter(`❌ ${erreur}`); setIsApiKeysModalOpen(true); }
     });
   }, [rafraichirDecouverte]);
+  // ── Mode Gratuit (modèles « :free » d'OpenRouter, 0 €) ou Premium (6 modèles avancés) ──
+  const [modeIA, setModeIA] = useState<"gratuit" | "premium">(() => {
+    try { return localStorage.getItem("iadebat_mode") === "premium" ? "premium" : "gratuit"; } catch { return "gratuit"; }
+  });
+  const choisirModeIA = (m: "gratuit" | "premium") => { setModeIA(m); try { localStorage.setItem("iadebat_mode", m); } catch {} };
+  const [ongletAcces, setOngletAcces] = useState<"access" | "keys">("access");
+  const ouvrirAcces = (onglet: "access" | "keys" = "access") => { setOngletAcces(onglet); setIsApiKeysModalOpen(true); };
   const deconnecterOpenRouter = () => { enregistrerCleOpenRouter(""); setCleOpenRouter(""); setMessageOpenRouter(""); };
   const changerGratuitsOpenRouter = (v: boolean) => { enregistrerGratuitsOpenRouter(v); setGratuitsOpenRouter(v); };
 
@@ -449,7 +456,11 @@ export default function AIDebate() {
   // Clé Mistral enregistrée dans un ancien « compte Alphabette » local : elle sert aussi.
   const aDesClesIA = activeKeysCount > 0 || Boolean(alphabetteAccount?.mistralApiKey?.trim());
   /** Au moins un moyen de faire parler les IA : clé perso, connexion OpenRouter ou Mode Découverte ouvert. */
-  const accesIA = aDesClesIA || Boolean(cleOpenRouter) || Boolean(etatDecouverte?.actif);
+  const premiumOffert = etatDecouverte?.actif ? etatDecouverte.premium?.restants ?? 0 : 0;
+  const accesGratuit = Boolean(cleOpenRouter) || Boolean(etatDecouverte?.actif);
+  const accesPremium = aDesClesIA || Boolean(cleOpenRouter) || premiumOffert > 0;
+  /** Le mode choisi peut-il faire parler les IA ? (un débat Premium déjà commencé garde son ticket) */
+  const accesIA = modeIA === "gratuit" ? accesGratuit : accesPremium || messages.length > 0;
 
   useEffect(() => {
     checkAndUpdateQuota(alphabetteAccount, false, accesIA).then(status => {
@@ -635,10 +646,11 @@ export default function AIDebate() {
       if (gratuitsOpenRouter) headers["x-iadebat-openrouter-gratuit"] = "1";
     }
     if (etatDecouverte?.actif) headers["x-iadebat-decouverte"] = "1";
+    headers["x-iadebat-mode"] = modeIA;
     if (activeTopic?.title) headers["x-iadebat-sujet"] = encodeURIComponent(activeTopic.title.slice(0, 200));
 
     return headers;
-  }, [apiKeys, alphabetteAccount, cleOpenRouter, gratuitsOpenRouter, etatDecouverte, activeTopic]);
+  }, [apiKeys, alphabetteAccount, cleOpenRouter, gratuitsOpenRouter, etatDecouverte, activeTopic, modeIA]);
 
   // ── Débat IA seul : l'utilisateur choisit la posture de chaque voix ; une seule clé pour toutes ──
   const [isSoloPanelOpen, setIsSoloPanelOpen] = useState(false);
@@ -663,8 +675,8 @@ export default function AIDebate() {
   const [soloActif, setSoloActif] = useState(false);
   /** Clés enregistrées sur cet appareil (une seule servira à toutes les voix). */
   const aUneClePerso = (id: string) => Boolean(id === "mistral" ? apiKeys.mistral || alphabetteAccount?.mistralApiKey : (apiKeys as any)[id]);
-  const viaPlateforme = cleOpenRouter ? "OpenRouter" : etatDecouverte?.actif ? "Découverte" : "";
-  const clesDisponibles = AGENTS.filter(a => aUneClePerso(a.id) || Boolean(viaPlateforme));
+  const viaPlateforme = modeIA === "gratuit" ? (accesGratuit ? "gratuit" : "") : cleOpenRouter ? "OpenRouter" : premiumOffert > 0 ? "Premium offert" : "";
+  const clesDisponibles = AGENTS.filter(a => (modeIA === "premium" && aUneClePerso(a.id)) || Boolean(viaPlateforme));
   const cleSolo = clesDisponibles.some(a => a.id === configSolo.cle) ? configSolo.cle : clesDisponibles[0]?.id || "";
   /** En-têtes réduits à la seule clé choisie : aucune autre IA ne peut prendre le relais. */
   const getHeadersCleUnique = useCallback((cle: string) => {
@@ -1283,9 +1295,11 @@ export default function AIDebate() {
 
     // Aucun accès aux IA : on le dit, on n'invente rien.
     if (!accesIA) {
-      setErrorMessage("Ouvrez « Accès aux IA » : connectez-vous avec OpenRouter en 1 clic, ou ajoutez votre clé en Mode Expert.");
+      setErrorMessage(modeIA === "premium"
+        ? "Mode Premium : connectez-vous avec OpenRouter en 1 clic ou ajoutez vos clés (Mode Expert). Le Mode Gratuit reste disponible sans rien configurer."
+        : "Le Mode Gratuit n'est pas joignable pour le moment. Réessayez dans un instant, ou connectez OpenRouter en 1 clic.");
       setPhase(messagesRef.current.length > 0 ? "paused" : "idle");
-      setIsApiKeysModalOpen(true);
+      if (modeIA === "gratuit") ouvrirAcces("access");
       return;
     }
 
@@ -1376,7 +1390,15 @@ export default function AIDebate() {
         const NOMS_FOURNISSEURS: Record<string, string> = { openai: "ChatGPT", anthropic: "Claude", claude: "Claude", gemini: "Gemini", deepseek: "DeepSeek", mistral: "Mistral", llama: "Llama", meta: "Llama" };
         const fournisseur = String(data.provider || "");
         const idFournisseur = fournisseur === "openai" ? "chatgpt" : fournisseur === "anthropic" ? "claude" : fournisseur;
-        const ecritPar = fournisseur ? `${NOMS_FOURNISSEURS[fournisseur] ?? fournisseur}${data.modelUsed ? ` · ${data.modelUsed}` : ""}` : undefined;
+        // Mode Gratuit : nom lisible du modèle gratuit (« Gemma 4 31b It (google) · gratuit »).
+        const nomGratuit = (id: string) => {
+          if (!id || id === "openrouter/free") return "Modèle gratuit";
+          const [f, n = id] = id.replace(/:free$/, "").split("/");
+          return `${n.split(/[-_]/).map(m => (m ? m[0].toUpperCase() + m.slice(1) : m)).join(" ")} (${f})`;
+        };
+        const ecritPar = fournisseur === "gratuit"
+          ? `${nomGratuit(String(data.modelUsed || ""))} · gratuit`
+          : fournisseur ? `${NOMS_FOURNISSEURS[fournisseur] ?? fournisseur}${data.modelUsed ? ` · ${data.modelUsed}` : ""}` : undefined;
         // En débat IA seul, toutes les voix sont écrites par la même IA (celle de la clé) : ce n'est pas un relais.
         const relais = !solo && Boolean(fournisseur) && idFournisseur !== agent.id;
 
@@ -1416,7 +1438,7 @@ export default function AIDebate() {
           setLoadingAgent(null);
           setPhase("paused");
           rafraichirDecouverte();
-          setIsApiKeysModalOpen(true);
+          if (modeIA === "gratuit") ouvrirAcces("access");
           return;
         }
         if (e?.sansCle) {
@@ -1443,7 +1465,7 @@ export default function AIDebate() {
     
     setRoundCount(n => n + 1);
     setPhase("paused");
-  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength, isTurboSpeed, getHeaders, getHeadersCleUnique, waitForReading, accesIA, alphabetteAccount, rafraichirDecouverte, formatDebat]);
+  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength, isTurboSpeed, getHeaders, getHeadersCleUnique, waitForReading, accesIA, alphabetteAccount, rafraichirDecouverte, formatDebat, modeIA]);
 
   // Sélectionne les agents actifs en désignant un premier orateur aléatoire (jamais forcé sur ChatGPT)
   const getRandomizedActiveAgents = useCallback((avoidFirstId?: string | null) => {
@@ -2671,6 +2693,75 @@ export default function AIDebate() {
                     </p>
 
                     {/* Actions principales, juste sous le sujet (accueil épuré du 18/11/2026) */}
+                    {phase === "idle" && messages.length === 0 && (
+                      <div className="mt-3 mb-1">
+                        {/* MODE GRATUIT / PREMIUM */}
+                        <div>
+                          <div role="radiogroup" aria-label="Mode d'accès aux IA" className="grid grid-cols-2 gap-1.5 max-w-xl mx-auto p-1 rounded-2xl bg-black/50 border border-white/10">
+                            {([
+                              { id: "gratuit", titre: "Gratuit", sous: "Accès immédiat · 0 €" },
+                              { id: "premium", titre: "Premium", sous: "ChatGPT, Claude, Gemini…" },
+                            ] as const).map(m => (
+                              <button
+                                key={m.id}
+                                role="radio"
+                                aria-checked={modeIA === m.id}
+                                onClick={() => choisirModeIA(m.id)}
+                                className={`min-h-[56px] rounded-xl px-2 py-1.5 cursor-pointer transition-all text-center ${
+                                  modeIA === m.id
+                                    ? m.id === "gratuit" ? "bg-[#00f5c4] text-black shadow-lg shadow-[#00f5c4]/20" : "bg-violet-400 text-black shadow-lg shadow-violet-500/20"
+                                    : "text-gray-300 hover:text-white hover:bg-white/[0.05]"
+                                }`}
+                              >
+                                <span className="block font-condensed font-extrabold text-sm sm:text-base uppercase tracking-wider">{m.id === "premium" ? "✦ " : ""}{m.titre}</span>
+                                <span className={`block text-[11px] sm:text-xs font-semibold ${modeIA === m.id ? "text-black/75" : "text-gray-400"}`}>{m.sous}</span>
+                              </button>
+                            ))}
+                          </div>
+
+                          {modeIA === "gratuit" ? (
+                            <p className="text-center text-[11px] sm:text-xs text-gray-400 mt-1.5">
+                              Modèles gratuits d'OpenRouter, sans clé ni compte
+                              {etatDecouverte?.actif && !cleOpenRouter ? ` · ${etatDecouverte.gratuit?.restants ?? etatDecouverte.debats_restants} débat(s) gratuit(s) restant(s) aujourd'hui` : ""}
+                              . Chaque réplique indique le modèle qui l'a écrite.
+                            </p>
+                          ) : accesPremium ? (
+                            <p className="text-center text-[11px] sm:text-xs text-violet-200 mt-1.5">
+                              {aDesClesIA ? "Vos clés personnelles" : cleOpenRouter ? "Votre compte OpenRouter" : `${premiumOffert} débat Premium offert aujourd'hui`}
+                              {" "}· GPT-5.4 Mini, Claude Haiku, Gemini Flash, Mistral Small, DeepSeek, Llama 4.
+                            </p>
+                          ) : (
+                            <div className="mt-2 max-w-xl mx-auto rounded-xl border border-violet-400/40 bg-violet-500/[0.07] p-3 space-y-2">
+                              <p className="text-sm text-gray-100 font-semibold text-center">Débloquer les modèles avancés</p>
+                              <button
+                                onClick={() => { void connecterOpenRouter(); }}
+                                className="w-full min-h-[48px] rounded-xl bg-violet-400 hover:bg-violet-300 text-black font-condensed font-extrabold text-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer"
+                              >
+                                <Zap className="w-4 h-4" /> Se connecter avec OpenRouter (1 clic)
+                              </button>
+                              <div className="grid grid-cols-2 gap-2">
+                                <button
+                                  onClick={() => ouvrirAcces("keys")}
+                                  className="min-h-[44px] rounded-xl border border-white/15 bg-white/[0.04] hover:bg-white/[0.08] text-xs sm:text-sm font-bold text-gray-100 cursor-pointer"
+                                >
+                                  Mes clés API (Mode Expert)
+                                </button>
+                                <button
+                                  disabled
+                                  title="Bientôt : pack de crédits Premium"
+                                  className="min-h-[44px] rounded-xl border border-white/10 bg-white/[0.02] text-xs sm:text-sm font-bold text-gray-500 cursor-not-allowed"
+                                >
+                                  Pack de crédits · bientôt
+                                </button>
+                              </div>
+                              <p className="text-[11px] text-gray-400 text-center">Le débat Premium offert du jour est utilisé ou indisponible. Le Mode Gratuit reste ouvert.</p>
+                            </div>
+                          )}
+                        </div>
+
+                      </div>
+                    )}
+
                     {phase === "idle" && (
                       <div className="mt-4 flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center justify-center gap-2">
                         <button
@@ -2823,7 +2914,7 @@ export default function AIDebate() {
                               onChange={(e) => setConfigSolo(c => ({ ...c, cle: e.target.value }))}
                               className="w-full rounded-lg bg-[#0b0b10] border border-white/20 text-sm text-white px-2 py-2"
                             >
-                              {clesDisponibles.map(a => <option key={a.id} value={a.id}>{aUneClePerso(a.id) ? `Ma clé ${a.name}` : `${a.name} (${viaPlateforme})`}</option>)}
+                              {clesDisponibles.map(a => <option key={a.id} value={a.id}>{modeIA === "premium" && aUneClePerso(a.id) ? `Ma clé ${a.name}` : modeIA === "gratuit" ? `${a.name} (modèle gratuit)` : `${a.name} (${viaPlateforme})`}</option>)}
                             </select>
                           ) : (
                             <p className="text-xs sm:text-sm text-amber-200">
@@ -3656,6 +3747,7 @@ export default function AIDebate() {
         onClose={() => setIsApiKeysModalOpen(false)}
         apiKeys={apiKeys}
         onSaveApiKey={handleSaveApiKey}
+        ongletInitial={ongletAcces}
         cleOpenRouter={cleOpenRouter}
         gratuitsOpenRouter={gratuitsOpenRouter}
         onChangerGratuits={changerGratuitsOpenRouter}

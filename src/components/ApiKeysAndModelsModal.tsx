@@ -119,6 +119,7 @@ interface ApiKeysAndModelsModalProps {
   messageOpenRouter: string;
   etatDecouverte: EtatDecouverte | null;
   onRafraichirDecouverte: () => void;
+  ongletInitial?: "access" | "keys";
 }
 
 export function ApiKeysAndModelsModal({
@@ -134,12 +135,13 @@ export function ApiKeysAndModelsModal({
   messageOpenRouter,
   etatDecouverte,
   onRafraichirDecouverte,
+  ongletInitial = "access",
 }: ApiKeysAndModelsModalProps) {
   const [activeTab, setActiveTab] = useState<"access" | "keys" | "evolution" | "freedom">("access");
   const [connexionEnCours, setConnexionEnCours] = useState(false);
   useEffect(() => {
-    if (isOpen) onRafraichirDecouverte();
-  }, [isOpen, onRafraichirDecouverte]);
+    if (isOpen) { onRafraichirDecouverte(); setActiveTab(ongletInitial); }
+  }, [isOpen, onRafraichirDecouverte, ongletInitial]);
   const [visibleKeys, setVisibleKeys] = useState<{ [key: string]: boolean }>({});
   const [testResults, setTestResults] = useState<{
     [key: string]: {
@@ -322,11 +324,11 @@ export function ApiKeysAndModelsModal({
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="font-condensed font-extrabold text-base sm:text-lg uppercase tracking-wider text-white flex items-center gap-2">
                     <Sparkles className="w-5 h-5 text-[#00f5c4]" />
-                    1. Mode Découverte
+                    1. Gratuit &amp; Premium offert
                   </h3>
                   {etatDecouverte?.actif ? (
                     <span className="text-xs sm:text-sm font-bold text-[#00f5c4] bg-[#00f5c4]/10 border border-[#00f5c4]/30 px-2.5 py-1 rounded-lg">
-                      {etatDecouverte.debats_restants} / {etatDecouverte.quota} débats gratuits aujourd'hui
+                      {etatDecouverte.gratuit?.restants ?? etatDecouverte.debats_restants} gratuits · {etatDecouverte.premium?.restants ?? 0} Premium offert
                     </span>
                   ) : (
                     <span className="text-xs sm:text-sm font-bold text-gray-400 bg-white/[0.04] border border-white/10 px-2.5 py-1 rounded-lg">
@@ -335,8 +337,8 @@ export function ApiKeysAndModelsModal({
                   )}
                 </div>
                 <p className="text-sm text-gray-200 leading-relaxed">
-                  <strong>Rien à configurer :</strong> lancez un débat, les 6 IA (ChatGPT, Claude, Gemini, DeepSeek, Mistral, Llama) répondent.
-                  {" "}{etatDecouverte?.quota ?? 3} débats gratuits par jour et par connexion.
+                  <strong>Rien à configurer.</strong> Mode Gratuit : {etatDecouverte?.gratuit?.quota ?? 10} débats par jour avec les modèles gratuits d'OpenRouter (le nom du modèle s'affiche sur chaque réplique).
+                  {" "}Mode Premium : {etatDecouverte?.premium?.quota ?? 1} débat offert par jour avec les 6 modèles avancés (ChatGPT, Claude, Gemini, DeepSeek, Mistral, Llama).
                 </p>
                 <p className="text-xs text-gray-400 leading-relaxed">
                   Vos messages passent par le serveur d'Alphabette puis par OpenRouter, qui transmet à chaque IA. Votre adresse IP n'est pas conservée (seulement une empreinte qui change chaque jour, pour compter les débats).

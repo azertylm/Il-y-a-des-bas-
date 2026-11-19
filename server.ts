@@ -723,20 +723,31 @@ function fournisseurDuModele(modele: string): string {
   return modele.split("/")[0];
 }
 
+/** Ordre fixe des orateurs : sert à varier le modèle gratuit d'un orateur à l'autre. */
+const RANGS_ORATEURS: IdOrateur[] = ["chatgpt", "claude", "gemini", "deepseek", "mistral", "llama"];
+const PARENTS_GRATUITS: Partial<Record<IdOrateur, string>> = { gemini: "google/", llama: "meta-llama/", deepseek: "deepseek/", mistral: "mistralai/", chatgpt: "openai/", claude: "anthropic/" };
+const EXCLUS_GRATUITS = /(image|audio|tts|embed|guard|omni|reasoning|code|lyria|1\.7b)/i;
+const estGratuit = (id: string) => id.endsWith(":free") || id === "openrouter/free";
+
+/** Mode Gratuit : modèles « :free » actifs sur OpenRouter (jamais codés en dur), variés selon l'orateur, routeur gratuit en dernier. */
+async function modelesGratuits(id: IdOrateur): Promise<string[]> {
+  const ids = (await catalogueOpenRouter())
+    .filter((m) => m.id.endsWith(":free") && !EXCLUS_GRATUITS.test(m.id))
+    .sort((a, b) => b.cree - a.cree)
+    .map((m) => m.id);
+  const parent = PARENTS_GRATUITS[id] || "";
+  const memes = parent ? ids.filter((m) => m.startsWith(parent)) : [];
+  let autres = ids.filter((m) => !memes.includes(m));
+  if (autres.length) { const d = Math.max(0, RANGS_ORATEURS.indexOf(id)) % autres.length; autres = [...autres.slice(d), ...autres.slice(0, d)]; }
+  return [...new Set([...memes, ...autres].slice(0, 4).concat("openrouter/free"))];
+}
+
 /** Connexion 1 clic : le visiteur paie OpenRouter lui-même (ou utilise les modèles gratuits). */
 async function appelerOpenRouterVisiteur(
   id: IdOrateur, cle: string, gratuits: boolean, systeme: string, prompt: string, maxTokens: number, temperature: number
 ): Promise<{ text: string; modelUsed: string; provider: string }> {
-  let liste = (await modelesOpenRouter(id, gratuits)).slice(0, 3);
-  if (liste.length === 0 && gratuits) {
-    // Pas de modèle gratuit chez ce fournisseur : un modèle gratuit d'un autre (la réplique le dira).
-    for (const autre of ["deepseek", "gemini", "mistral", "chatgpt"] as IdOrateur[]) {
-      const l = await modelesOpenRouter(autre, true);
-      if (l.length) { liste = l.slice(0, 2); break; }
-    }
-    // Aucun modèle gratuit chez nos 6 fournisseurs : routeur gratuit d'OpenRouter (la réplique dira lequel a écrit).
-    if (liste.length === 0) liste = ["openrouter/free"];
-  }
+  // Mode Gratuit : verrou, aucun identifiant payant ne peut passer.
+  let liste = gratuits ? (await modelesGratuits(id)).filter(estGratuit) : (await modelesOpenRouter(id, false)).slice(0, 3);
   if (liste.length === 0) throw new Error(`OpenRouter : aucun modèle ${CLES_IA[id].nom}${gratuits ? " gratuit" : ""} disponible.`);
   let derniere = "";
   for (let i = 0; i < liste.length; i++) {
@@ -762,7 +773,7 @@ async function appelerOpenRouterVisiteur(
       const d = JSON.parse(texte);
       const contenu = String(d?.choices?.[0]?.message?.content || "");
       const modele = String(d?.model || liste[i]);
-      if (contenu.trim()) return { text: contenu, modelUsed: modele, provider: fournisseurDuModele(modele) };
+      if (contenu.trim()) return { text: contenu, modelUsed: modele, provider: gratuits ? "gratuit" : fournisseurDuModele(modele) };
       derniere = "réponse vide";
       continue;
     }
@@ -802,25 +813,32 @@ function erreurQuota(message: string): Error {
 
 /** Mode Découverte : un ticket par sujet (= 1 des 3 débats gratuits du jour), puis les répliques. */
 async function appelerDecouverte(
-  id: IdOrateur, sujet: string, divers: boolean, systeme: string, prompt: string, maxTokens: number, temperature: number
+  id: IdOrateur, mode: "gratuit" | "premium", sujet: string, divers: boolean, systeme: string, prompt: string, maxTokens: number, temperature: number
 ): Promise<{ text: string; modelUsed: string; provider: string }> {
-  for (let essai = 0; essai < 2; essai++) {
+  const cleTicket = `${mode}|${sujet}`;
+  let sature = false;
+  for (let essai = 0; essai < 3; essai++) {
     let ticket = "";
     if (!divers) {
-      ticket = ticketsDecouverte.get(sujet) || "";
+      ticket = ticketsDecouverte.get(cleTicket) || "";
       if (!ticket) {
-        const d = await postDecouverte({ action: "debut", sujet: sujet.slice(0, 200) });
+        const d = await postDecouverte({ action: "debut", sujet: sujet.slice(0, 200), mode });
         if (d.status === 429) throw erreurQuota(d.data?.erreur || "Débats gratuits du jour épuisés.");
         if (d.status !== 200 || !d.data?.ticket) throw new Error(d.data?.erreur || `Mode Découverte indisponible (${d.status}).`);
         ticket = d.data.ticket;
-        ticketsDecouverte.set(sujet, ticket);
+        ticketsDecouverte.set(cleTicket, ticket);
       }
     }
-    const r = await postDecouverte({ action: "generer", ticket, divers, orateur: id, systeme, prompt, max_tokens: maxTokens, temperature });
-    if (r.status === 200 && r.data?.texte) return { text: String(r.data.texte), modelUsed: String(r.data.modele || ""), provider: String(r.data.fournisseur || CLES_IA[id].fournisseur) };
-    if (r.status === 401 && r.data?.ticket && !divers) { ticketsDecouverte.delete(sujet); continue; }
+    const r = await postDecouverte({ action: "generer", ticket, divers, orateur: id, rang: Math.max(0, RANGS_ORATEURS.indexOf(id)), systeme, prompt, max_tokens: maxTokens, temperature });
+    if (r.status === 200 && r.data?.texte) {
+      const gratuit = Boolean(r.data.gratuit);
+      return { text: String(r.data.texte), modelUsed: String(r.data.modele || ""), provider: gratuit ? "gratuit" : String(r.data.fournisseur || CLES_IA[id].fournisseur) };
+    }
+    if (r.status === 401 && r.data?.ticket && !divers) { ticketsDecouverte.delete(cleTicket); continue; }
+    // Serveur gratuit saturé : petite pause puis nouvelle tentative (une seule).
+    if (r.status === 503 && r.data?.sature && !sature) { sature = true; await new Promise((ok) => setTimeout(ok, 2500)); continue; }
     if (r.status === 429) {
-      if (r.data?.fin_debat) ticketsDecouverte.delete(sujet);
+      if (r.data?.fin_debat) ticketsDecouverte.delete(cleTicket);
       throw erreurQuota(r.data?.erreur || "Débats gratuits du jour épuisés.");
     }
     throw new Error(r.data?.erreur || `Mode Découverte : ${CLES_IA[id].nom} n'a pas répondu (${r.status}).`);
@@ -835,6 +853,14 @@ interface TexteEcrit {
   /** « Mistral · mistral-large-latest » : l'IA qui a vraiment écrit. */
   ecritPar: string;
   notice?: string;
+}
+
+/** « google/gemma-4-31b-it:free » → « Gemma 4 31b It (google) » : nom lisible du modèle gratuit qui a répondu. */
+function nomModeleGratuit(id: string): string {
+  if (!id || id === "openrouter/free") return "Modèle gratuit";
+  const [fournisseur, nom = id] = id.replace(/:free$/, "").split("/");
+  const joli = nom.split(/[-_]/).map((m) => (m ? m[0].toUpperCase() + m.slice(1) : m)).join(" ");
+  return `${joli} (${fournisseur})`;
 }
 
 type SourceIA = { type: "cle" | "openrouter" | "decouverte"; id: IdOrateur };
@@ -854,15 +880,23 @@ async function ecrireAvecLesCles(
   const cleOR = lireEntete(headers, "x-iadebat-openrouter-key");
   const gratuitsOR = lireEntete(headers, "x-iadebat-openrouter-gratuit") === "1";
   const decouverte = lireEntete(headers, "x-iadebat-decouverte") === "1";
+  const mode: "gratuit" | "premium" = lireEntete(headers, "x-iadebat-mode") === "premium" ? "premium" : "gratuit";
   let sujet = "";
   try { sujet = decodeURIComponent(lireEntete(headers, "x-iadebat-sujet")); } catch { sujet = ""; }
   const divers = Boolean(options.divers) || !sujet;
 
   const sources: SourceIA[] = [];
-  if (cleDe(headers, prefere)) sources.push({ type: "cle", id: prefere });
-  if (cleOR) sources.push({ type: "openrouter", id: prefere });
-  else if (decouverte) sources.push({ type: "decouverte", id: prefere });
-  for (const id of ORDRE_RELAIS) if (id !== prefere && cleDe(headers, id)) sources.push({ type: "cle", id });
+  if (mode === "gratuit") {
+    // MODE GRATUIT : uniquement des modèles gratuits (OpenRouter du visiteur forcé en « :free », ou relais gratuit).
+    // Les clés personnelles (payantes) ne sont jamais utilisées ici.
+    if (cleOR) sources.push({ type: "openrouter", id: prefere });
+    else if (decouverte) sources.push({ type: "decouverte", id: prefere });
+  } else {
+    if (cleDe(headers, prefere)) sources.push({ type: "cle", id: prefere });
+    if (cleOR) sources.push({ type: "openrouter", id: prefere });
+    else if (decouverte) sources.push({ type: "decouverte", id: prefere });
+    for (const id of ORDRE_RELAIS) if (id !== prefere && cleDe(headers, id)) sources.push({ type: "cle", id });
+  }
   if (sources.length === 0) {
     const e: any = new Error(MESSAGE_SANS_CLE);
     e.sansCle = true;
@@ -880,18 +914,19 @@ async function ecrireAvecLesCles(
         const d = await appelerIA(s.id, cleDe(headers, s.id), systeme, prompt, options.maxTokens, temperature);
         r = { ...d, provider: CLES_IA[s.id].fournisseur };
       } else if (s.type === "openrouter") {
-        r = await appelerOpenRouterVisiteur(s.id, cleOR, gratuitsOR, systeme, prompt, options.maxTokens, temperature);
+        r = await appelerOpenRouterVisiteur(s.id, cleOR, mode === "gratuit" || gratuitsOR, systeme, prompt, options.maxTokens, temperature);
       } else {
-        r = await appelerDecouverte(s.id, sujet || "divers", divers, systeme, prompt, options.maxTokens, temperature);
+        r = await appelerDecouverte(s.id, mode, sujet || "divers", divers, systeme, prompt, options.maxTokens, temperature);
       }
       if (r.text.trim()) {
-        const via = s.type === "openrouter" ? " (OpenRouter)" : s.type === "decouverte" ? " (Découverte)" : "";
-        const nomReel = Object.values(CLES_IA).find((c) => c.fournisseur === r.provider)?.nom || r.provider;
+        const gratuit = r.provider === "gratuit";
+        const via = gratuit ? " · gratuit" : s.type === "openrouter" ? " (OpenRouter)" : s.type === "decouverte" ? " (Premium offert)" : "";
+        const nomReel = gratuit ? nomModeleGratuit(r.modelUsed) : Object.values(CLES_IA).find((c) => c.fournisseur === r.provider)?.nom || r.provider;
         return {
           text: r.text,
           provider: r.provider,
           modelUsed: r.modelUsed,
-          ecritPar: `${nomReel} · ${r.modelUsed}${via}`,
+          ecritPar: gratuit ? `${nomReel}${via}` : `${nomReel} · ${r.modelUsed}${via}`,
           notice: echecs.length ? `${echecs.join(" ; ")} — relais par ${nomReel}` : undefined,
         };
       }
