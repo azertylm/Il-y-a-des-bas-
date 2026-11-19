@@ -83,6 +83,7 @@ import {
   ALPHABETTE_FOOTER_TEXT
 } from "./utils/alphabetteAuth";
 import { checkAndUpdateQuota, QuotaStatus } from "./utils/alphabetteQuota";
+import { lireCleOpenRouter, enregistrerCleOpenRouter, lireGratuitsOpenRouter, enregistrerGratuitsOpenRouter, terminerConnexionOpenRouter, lireEtatDecouverte, EtatDecouverte } from "./utils/openrouter";
 import { lireMembre, lienInscription } from "./utils/membreAlphabette";
 
 // ─── THÈMES TEMPORELS PAR DÉFAUT ─────────────────────────────────────────────
@@ -390,6 +391,22 @@ export default function AIDebate() {
     try { localStorage.removeItem("debate_api_models"); } catch { /* rien */ }
   }, []);
 
+  // ── Accès aux IA sans configuration : Mode Découverte (site) et connexion OpenRouter 1 clic ──
+  const [cleOpenRouter, setCleOpenRouter] = useState<string>(() => lireCleOpenRouter());
+  const [gratuitsOpenRouter, setGratuitsOpenRouter] = useState<boolean>(() => lireGratuitsOpenRouter());
+  const [etatDecouverte, setEtatDecouverte] = useState<EtatDecouverte | null>(null);
+  const [messageOpenRouter, setMessageOpenRouter] = useState<string>("");
+  const rafraichirDecouverte = useCallback(() => { lireEtatDecouverte().then(setEtatDecouverte); }, []);
+  useEffect(() => {
+    rafraichirDecouverte();
+    terminerConnexionOpenRouter().then(({ cle, erreur }) => {
+      if (cle) { setCleOpenRouter(cle); setMessageOpenRouter("✅ Connecté à OpenRouter : les 6 IA répondent avec votre compte, sans limite du site."); setIsApiKeysModalOpen(true); }
+      else if (erreur) { setMessageOpenRouter(`❌ ${erreur}`); setIsApiKeysModalOpen(true); }
+    });
+  }, [rafraichirDecouverte]);
+  const deconnecterOpenRouter = () => { enregistrerCleOpenRouter(""); setCleOpenRouter(""); setMessageOpenRouter(""); };
+  const changerGratuitsOpenRouter = (v: boolean) => { enregistrerGratuitsOpenRouter(v); setGratuitsOpenRouter(v); };
+
   const [visibleApiKeyIds, setVisibleApiKeyIds] = useState<{ [key: string]: boolean }>({});
 
   const handleSaveApiKey = (agentId: string, value: string) => {
@@ -407,12 +424,14 @@ export default function AIDebate() {
   const activeKeysCount = Object.values(apiKeys).filter((k): k is string => typeof k === "string" && k.trim().length > 0).length;
   // Clé Mistral enregistrée dans un ancien « compte Alphabette » local : elle sert aussi.
   const aDesClesIA = activeKeysCount > 0 || Boolean(alphabetteAccount?.mistralApiKey?.trim());
+  /** Au moins un moyen de faire parler les IA : clé perso, connexion OpenRouter ou Mode Découverte ouvert. */
+  const accesIA = aDesClesIA || Boolean(cleOpenRouter) || Boolean(etatDecouverte?.actif);
 
   useEffect(() => {
-    checkAndUpdateQuota(alphabetteAccount, false, aDesClesIA).then(status => {
+    checkAndUpdateQuota(alphabetteAccount, false, accesIA).then(status => {
       setQuotaStatus(status);
     });
-  }, [alphabetteAccount, aDesClesIA]);
+  }, [alphabetteAccount, accesIA]);
 
   // --- AFFICHAGE / MASQUAGE DES MODULES LATÉRAUX ---
   // Permet de masquer la configuration du thème, le réglage des retenues & tonalités, la boussole et le vote du public pour accéder directement au débat
@@ -587,9 +606,15 @@ export default function AIDebate() {
     const cleMistral = apiKeys.mistral || alphabetteAccount?.mistralApiKey || "";
     if (cleMistral) headers["x-mistral-api-key"] = cleMistral;
     if (apiKeys.grok) headers["x-grok-api-key"] = apiKeys.grok;
+    if (cleOpenRouter) {
+      headers["x-iadebat-openrouter-key"] = cleOpenRouter;
+      if (gratuitsOpenRouter) headers["x-iadebat-openrouter-gratuit"] = "1";
+    }
+    if (etatDecouverte?.actif) headers["x-iadebat-decouverte"] = "1";
+    if (activeTopic?.title) headers["x-iadebat-sujet"] = encodeURIComponent(activeTopic.title.slice(0, 200));
 
     return headers;
-  }, [apiKeys, alphabetteAccount]);
+  }, [apiKeys, alphabetteAccount, cleOpenRouter, gratuitsOpenRouter, etatDecouverte, activeTopic]);
 
   // ── Débat IA seul : l'utilisateur choisit la posture de chaque voix ; une seule clé pour toutes ──
   const [isSoloPanelOpen, setIsSoloPanelOpen] = useState(false);
@@ -613,7 +638,9 @@ export default function AIDebate() {
   }, [phase, messages.length, sondageDebatTermine]);
   const [soloActif, setSoloActif] = useState(false);
   /** Clés enregistrées sur cet appareil (une seule servira à toutes les voix). */
-  const clesDisponibles = AGENTS.filter(a => (a.id === "mistral" ? apiKeys.mistral || alphabetteAccount?.mistralApiKey : (apiKeys as any)[a.id]));
+  const aUneClePerso = (id: string) => Boolean(id === "mistral" ? apiKeys.mistral || alphabetteAccount?.mistralApiKey : (apiKeys as any)[id]);
+  const viaPlateforme = cleOpenRouter ? "OpenRouter" : etatDecouverte?.actif ? "Découverte" : "";
+  const clesDisponibles = AGENTS.filter(a => aUneClePerso(a.id) || Boolean(viaPlateforme));
   const cleSolo = clesDisponibles.some(a => a.id === configSolo.cle) ? configSolo.cle : clesDisponibles[0]?.id || "";
   /** En-têtes réduits à la seule clé choisie : aucune autre IA ne peut prendre le relais. */
   const getHeadersCleUnique = useCallback((cle: string) => {
@@ -621,7 +648,7 @@ export default function AIDebate() {
     const prefixe = PREFIXE_CLE[cle] || "";
     const garde: Record<string, string> = {};
     for (const [nom, valeur] of Object.entries(tous)) {
-      if (nom === "Content-Type" || (prefixe && nom.startsWith(prefixe))) garde[nom] = String(valeur);
+      if (nom === "Content-Type" || nom.startsWith("x-iadebat-") || (prefixe && nom.startsWith(prefixe))) garde[nom] = String(valeur);
     }
     return garde;
   }, [getHeaders]);
@@ -1218,9 +1245,9 @@ export default function AIDebate() {
       return;
     }
 
-    // Sans aucune clé, aucune IA ne peut parler : on le dit, on n'invente rien.
-    if (!aDesClesIA) {
-      setErrorMessage("Ajoutez votre clé dans Clé API (bouton « Clés API » en haut de la page) : sans clé, aucune IA ne peut répondre.");
+    // Aucun accès aux IA : on le dit, on n'invente rien.
+    if (!accesIA) {
+      setErrorMessage("Ouvrez « Accès aux IA » : connectez-vous avec OpenRouter en 1 clic, ou ajoutez votre clé en Mode Expert.");
       setPhase(messagesRef.current.length > 0 ? "paused" : "idle");
       setIsApiKeysModalOpen(true);
       return;
@@ -1258,7 +1285,7 @@ export default function AIDebate() {
       }
 
       try {
-        const quotaRes = await checkAndUpdateQuota(alphabetteAccount, true, aDesClesIA);
+        const quotaRes = await checkAndUpdateQuota(alphabetteAccount, true, accesIA);
         setQuotaStatus(quotaRes);
         if (quotaRes.quotaExhausted) {
           setIsQuotaExceededModalOpen(true);
@@ -1284,6 +1311,7 @@ export default function AIDebate() {
           const err = await res.json().catch(() => ({}));
           const erreur: any = new Error(err.error || `Erreur de traitement sur le modèle d'${agent.name}`);
           erreur.sansCle = Boolean(err.sansCle);
+          erreur.quotaDecouverte = Boolean(err.quotaDecouverte);
           throw erreur;
         }
 
@@ -1325,6 +1353,15 @@ export default function AIDebate() {
         }
       } catch (e: any) { 
         console.warn(`[IADÉBAT CLIENT] ${agent.name} n'a pas répondu :`, e?.message || e);
+        if (e?.quotaDecouverte) {
+          // Débats gratuits du jour épuisés : on propose la connexion OpenRouter ou les clés.
+          setErrorMessage(e.message);
+          setLoadingAgent(null);
+          setPhase("paused");
+          rafraichirDecouverte();
+          setIsApiKeysModalOpen(true);
+          return;
+        }
         if (e?.sansCle) {
           // Plus aucune clé : on s'arrête et on le dit (aucune réplique inventée).
           setErrorMessage(e.message);
@@ -1349,7 +1386,7 @@ export default function AIDebate() {
     
     setRoundCount(n => n + 1);
     setPhase("paused");
-  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength, isTurboSpeed, getHeaders, getHeadersCleUnique, waitForReading, aDesClesIA, alphabetteAccount]);
+  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength, isTurboSpeed, getHeaders, getHeadersCleUnique, waitForReading, accesIA, alphabetteAccount, rafraichirDecouverte]);
 
   // Sélectionne les agents actifs en désignant un premier orateur aléatoire (jamais forcé sur ChatGPT)
   const getRandomizedActiveAgents = useCallback((avoidFirstId?: string | null) => {
@@ -1661,16 +1698,16 @@ export default function AIDebate() {
           {/* BOUTON CLÉS & MODÈLES IA / LIBERTÉ */}
           <button
             onClick={() => setIsApiKeysModalOpen(true)}
-            title="Gestion des clés API et garantie de liberté d'opinion"
+            title="Accès aux IA : Mode Découverte, connexion OpenRouter, clés personnelles"
             className={`hidden sm:flex items-center justify-center gap-1.5 px-2.5 py-1 rounded-lg border font-bold text-xs uppercase tracking-wider cursor-pointer transition-all shadow-sm shrink-0 ${
-              activeKeysCount > 0
+              accesIA
                 ? "bg-[#00f5c4]/15 hover:bg-[#00f5c4]/25 border-[#00f5c4]/40 text-[#00f5c4]"
                 : "bg-white/[0.06] hover:bg-white/[0.12] border-white/20 text-gray-300 hover:text-white"
             }`}
           >
             <Cpu className="w-3.5 h-3.5 text-[#00f5c4] shrink-0" />
-            <span>Clés API</span>
-            {activeKeysCount > 0 ? (
+            <span>Accès IA</span>
+            {accesIA ? (
               <span className="w-1.5 h-1.5 rounded-full bg-[#00f5c4] shrink-0 animate-pulse" />
             ) : (
               <span className="text-[9px] text-gray-500 font-normal">Auto</span>
@@ -2077,10 +2114,10 @@ export default function AIDebate() {
                 <div className="flex items-center justify-between">
                   <span className="font-condensed font-bold text-xs tracking-wider uppercase text-gray-300 flex items-center gap-1.5">
                     <Cpu className="w-3.5 h-3.5 text-[#00f5c4]" />
-                    Clés API
+                    Accès aux IA
                   </span>
                   <span className="text-[10px] text-[#00f5c4] font-bold bg-[#00f5c4]/10 px-2 py-0.5 rounded border border-[#00f5c4]/20">
-                    {activeKeysCount} / 6 Actives
+                    {cleOpenRouter ? "OpenRouter" : activeKeysCount > 0 ? `${activeKeysCount} clé${activeKeysCount > 1 ? "s" : ""}` : etatDecouverte?.actif ? `Découverte · ${etatDecouverte.debats_restants}/${etatDecouverte.quota}` : "À configurer"}
                   </span>
                 </div>
 
@@ -2090,7 +2127,7 @@ export default function AIDebate() {
                   className="w-full py-2 px-3 bg-gradient-to-r from-blue-600/20 via-[#00f5c4]/20 to-purple-600/20 hover:from-blue-600/30 hover:to-purple-600/30 border border-[#00f5c4]/40 rounded-lg text-white font-condensed font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer transition-all shadow-md shadow-[#00f5c4]/10"
                 >
                   <Sparkles className="w-3.5 h-3.5 text-[#00f5c4]" />
-                  <span>Ouvrir les Clés API</span>
+                  <span>Ouvrir l'accès aux IA</span>
                 </button>
 
                 {/* Badge de neutralité doctrinale & liberté */}
@@ -2115,14 +2152,14 @@ export default function AIDebate() {
                   onClick={() => setShowApiKeys(!showApiKeys)}
                   className="font-condensed font-bold text-[11px] tracking-wider uppercase text-gray-400 border-t border-white/[0.05] pt-2 flex items-center justify-between w-full hover:text-white cursor-pointer transition-colors bg-transparent border-none text-left"
                 >
-                  <span>Saisie rapide des clés locales</span>
+                  <span>Mode Expert : saisie rapide des clés</span>
                   <span>{showApiKeys ? "▲ Masquer" : "▼ Dérouler"}</span>
                 </button>
 
                 {showApiKeys && (
                   <div className="flex flex-col gap-3.5 mt-1 animate-fadeSlideUp">
                     <p className="text-[10px] text-gray-400 leading-normal">
-                      Renseignez au moins une clé API personnelle : sans clé, aucune IA ne peut répondre. Un orateur sans clé est écrit par une autre IA dont la clé est enregistrée, en imitant son style : chaque réplique l’indique. Les clés restent dans ce navigateur et ne partent que chez le fournisseur d’IA concerné.
+                      Facultatif : sans clé, le Mode Découverte ou la connexion OpenRouter font parler les IA. Avec votre clé, l'IA concernée répond directement depuis votre compte. Les clés restent dans ce navigateur et ne partent que chez le fournisseur d’IA concerné.
                     </p>
                     
                     {[
@@ -2625,7 +2662,7 @@ export default function AIDebate() {
                         </div>
 
                         <div className="space-y-1.5">
-                          <label htmlFor="cle-solo" className="block text-xs sm:text-sm font-bold text-gray-200">Clé utilisée pour toutes les voix</label>
+                          <label htmlFor="cle-solo" className="block text-xs sm:text-sm font-bold text-gray-200">IA qui écrit toutes les voix</label>
                           {clesDisponibles.length > 0 ? (
                             <select
                               id="cle-solo"
@@ -2633,13 +2670,13 @@ export default function AIDebate() {
                               onChange={(e) => setConfigSolo(c => ({ ...c, cle: e.target.value }))}
                               className="w-full rounded-lg bg-[#0b0b10] border border-white/20 text-sm text-white px-2 py-2"
                             >
-                              {clesDisponibles.map(a => <option key={a.id} value={a.id}>Ma clé {a.name}</option>)}
+                              {clesDisponibles.map(a => <option key={a.id} value={a.id}>{aUneClePerso(a.id) ? `Ma clé ${a.name}` : `${a.name} (${viaPlateforme})`}</option>)}
                             </select>
                           ) : (
                             <p className="text-xs sm:text-sm text-amber-200">
-                              Aucune clé enregistrée sur cet appareil.{" "}
-                              <button onClick={() => setIsApiKeysModalOpen(true)} className="underline font-bold cursor-pointer">Ajouter ma clé</button>{" "}
-                              (une seule suffit, elle reste dans votre navigateur).
+                              Aucun accès aux IA pour l'instant.{" "}
+                              <button onClick={() => setIsApiKeysModalOpen(true)} className="underline font-bold cursor-pointer">Accès aux IA</button>{" "}
+                              (connexion OpenRouter en 1 clic, ou votre clé).
                             </p>
                           )}
                         </div>
@@ -2665,7 +2702,7 @@ export default function AIDebate() {
 
                     {soloActif && messages.length > 0 && (
                       <p className="mt-3 text-center text-xs sm:text-sm text-[#d6bcff]">
-                        🤖 Débat IA seul : {soloRef.current?.nb ?? configSolo.nb} voix aux avis choisis par vous, écrites avec votre clé {AGENTS.find(a => a.id === (soloRef.current?.cle || cleSolo))?.name ?? ""}.
+                        🤖 Débat IA seul : {soloRef.current?.nb ?? configSolo.nb} voix aux avis choisis par vous, écrites par {AGENTS.find(a => a.id === (soloRef.current?.cle || cleSolo))?.name ?? ""}.
                       </p>
                     )}
 
@@ -3422,6 +3459,13 @@ export default function AIDebate() {
         onClose={() => setIsApiKeysModalOpen(false)}
         apiKeys={apiKeys}
         onSaveApiKey={handleSaveApiKey}
+        cleOpenRouter={cleOpenRouter}
+        gratuitsOpenRouter={gratuitsOpenRouter}
+        onChangerGratuits={changerGratuitsOpenRouter}
+        onDeconnecterOpenRouter={deconnecterOpenRouter}
+        messageOpenRouter={messageOpenRouter}
+        etatDecouverte={etatDecouverte}
+        onRafraichirDecouverte={rafraichirDecouverte}
         onResetAllKeys={handleResetAllKeys}
       />
 

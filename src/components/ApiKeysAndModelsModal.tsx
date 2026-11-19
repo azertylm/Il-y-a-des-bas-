@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { connecterOpenRouter, EtatDecouverte } from "../utils/openrouter";
 import { 
   Key, 
   Sparkles, 
@@ -18,7 +19,10 @@ import {
   Check,
   Flame,
   Globe2,
-  Trash2
+  Trash2,
+  Zap,
+  LogOut,
+  ChevronRight
 } from "lucide-react";
 
 export interface ApiProviderConfig {
@@ -108,6 +112,13 @@ interface ApiKeysAndModelsModalProps {
   apiKeys: { [key: string]: string };
   onSaveApiKey: (providerId: string, value: string) => void;
   onResetAllKeys: () => void;
+  cleOpenRouter: string;
+  gratuitsOpenRouter: boolean;
+  onChangerGratuits: (v: boolean) => void;
+  onDeconnecterOpenRouter: () => void;
+  messageOpenRouter: string;
+  etatDecouverte: EtatDecouverte | null;
+  onRafraichirDecouverte: () => void;
 }
 
 export function ApiKeysAndModelsModal({
@@ -116,8 +127,19 @@ export function ApiKeysAndModelsModal({
   apiKeys,
   onSaveApiKey,
   onResetAllKeys,
+  cleOpenRouter,
+  gratuitsOpenRouter,
+  onChangerGratuits,
+  onDeconnecterOpenRouter,
+  messageOpenRouter,
+  etatDecouverte,
+  onRafraichirDecouverte,
 }: ApiKeysAndModelsModalProps) {
-  const [activeTab, setActiveTab] = useState<"keys" | "evolution" | "freedom">("keys");
+  const [activeTab, setActiveTab] = useState<"access" | "keys" | "evolution" | "freedom">("access");
+  const [connexionEnCours, setConnexionEnCours] = useState(false);
+  useEffect(() => {
+    if (isOpen) onRafraichirDecouverte();
+  }, [isOpen, onRafraichirDecouverte]);
   const [visibleKeys, setVisibleKeys] = useState<{ [key: string]: boolean }>({});
   const [testResults, setTestResults] = useState<{
     [key: string]: {
@@ -209,20 +231,20 @@ export function ApiKeysAndModelsModal({
         {/* HEADER MODAL */}
         <div className="px-4 sm:px-6 py-4 border-b border-white/[0.08] flex items-center justify-between gap-2 bg-gradient-to-r from-white/[0.03] to-transparent shrink-0">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-[#00f5c4]/20 to-blue-500/20 border border-[#00f5c4]/40 flex items-center justify-center text-[#00f5c4] shadow-sm shrink-0">
+            <div className="hidden sm:flex w-10 h-10 rounded-xl bg-gradient-to-br from-[#00f5c4]/20 to-blue-500/20 border border-[#00f5c4]/40 items-center justify-center text-[#00f5c4] shadow-sm shrink-0">
               <Cpu className="w-5 h-5" />
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-center gap-2">
                 <h2 className="font-condensed font-bold text-lg text-white uppercase tracking-wider">
-                  Clés API & Liberté d'Expression
+                  Accès aux IA
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-[#00f5c4]/15 text-[#00f5c4] border border-[#00f5c4]/30">
-                  {activeKeysCount} / 6 clés actives
+                  {cleOpenRouter ? "OpenRouter connecté" : activeKeysCount > 0 ? `${activeKeysCount} / 6 clés` : etatDecouverte?.actif ? "Mode Découverte" : "À configurer"}
                 </span>
               </div>
-              <p className="text-xs text-gray-400">
-                Vos clés restent dans ce navigateur. Le modèle de chaque IA est choisi automatiquement.
+              <p className="hidden sm:block text-xs text-gray-400">
+                Débattez tout de suite, sans rien configurer. Le modèle de chaque IA est choisi automatiquement.
               </p>
             </div>
           </div>
@@ -237,22 +259,35 @@ export function ApiKeysAndModelsModal({
         </div>
 
         {/* NAVIGATION PAR ONGLETS */}
-        <div className="flex border-b border-white/[0.08] bg-black/40 px-6 shrink-0 gap-2 overflow-x-auto">
+        <div className="flex border-b border-white/[0.08] bg-black/40 px-2 sm:px-6 shrink-0 gap-1 sm:gap-2 overflow-x-auto">
+          <button
+            onClick={() => setActiveTab("access")}
+            className={`py-3 px-3 sm:px-4 whitespace-nowrap font-condensed font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-all border-b-2 shrink-0 ${
+              activeTab === "access"
+                ? "border-[#00f5c4] text-[#00f5c4] bg-white/[0.02]"
+                : "border-transparent text-gray-400 hover:text-gray-200"
+            }`}
+          >
+            <Zap className="w-4 h-4" />
+            <span>Accès aux IA</span>
+          </button>
+
           <button
             onClick={() => setActiveTab("keys")}
-            className={`py-3 px-4 font-condensed font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-all border-b-2 ${
+            className={`py-3 px-3 sm:px-4 whitespace-nowrap font-condensed font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-all border-b-2 ${
               activeTab === "keys"
                 ? "border-[#00f5c4] text-[#00f5c4] bg-white/[0.02]"
                 : "border-transparent text-gray-400 hover:text-gray-200"
             }`}
           >
             <Key className="w-4 h-4" />
-            <span>Clés API</span>
+            <span className="sm:hidden">Mode Expert</span>
+            <span className="hidden sm:inline">Mode Expert (Clés API personnelles)</span>
           </button>
 
           <button
             onClick={() => setActiveTab("freedom")}
-            className={`py-3 px-4 font-condensed font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-all border-b-2 ${
+            className={`py-3 px-3 sm:px-4 whitespace-nowrap font-condensed font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-all border-b-2 ${
               activeTab === "freedom"
                 ? "border-emerald-400 text-emerald-400 bg-white/[0.02]"
                 : "border-transparent text-gray-400 hover:text-gray-200"
@@ -265,7 +300,7 @@ export function ApiKeysAndModelsModal({
 
           <button
             onClick={() => setActiveTab("evolution")}
-            className={`py-3 px-4 font-condensed font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-all border-b-2 ${
+            className={`py-3 px-3 sm:px-4 whitespace-nowrap font-condensed font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer transition-all border-b-2 ${
               activeTab === "evolution"
                 ? "border-blue-400 text-blue-400 bg-white/[0.02]"
                 : "border-transparent text-gray-400 hover:text-gray-200"
@@ -277,9 +312,102 @@ export function ApiKeysAndModelsModal({
         </div>
 
         {/* CONTENU DÉFILABLE */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-6 space-y-6">
 
-          {/* ═══ ONGLET 1 : CLÉS & MODÈLES ═══ */}
+          {/* ═══ ONGLET 0 : ACCÈS AUX IA (Découverte + OpenRouter 1 clic) ═══ */}
+          {activeTab === "access" && (
+            <div className="space-y-4 animate-fadeIn">
+              {/* MODE DÉCOUVERTE */}
+              <section className="rounded-xl border border-[#00f5c4]/40 bg-gradient-to-br from-[#00f5c4]/[0.08] via-[#121217] to-[#121217] p-4 sm:p-5 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-condensed font-extrabold text-base sm:text-lg uppercase tracking-wider text-white flex items-center gap-2">
+                    <Sparkles className="w-5 h-5 text-[#00f5c4]" />
+                    1. Mode Découverte
+                  </h3>
+                  {etatDecouverte?.actif ? (
+                    <span className="text-xs sm:text-sm font-bold text-[#00f5c4] bg-[#00f5c4]/10 border border-[#00f5c4]/30 px-2.5 py-1 rounded-lg">
+                      {etatDecouverte.debats_restants} / {etatDecouverte.quota} débats gratuits aujourd'hui
+                    </span>
+                  ) : (
+                    <span className="text-xs sm:text-sm font-bold text-gray-400 bg-white/[0.04] border border-white/10 px-2.5 py-1 rounded-lg">
+                      {etatDecouverte ? "Bientôt ouvert" : "Vérification…"}
+                    </span>
+                  )}
+                </div>
+                <p className="text-sm text-gray-200 leading-relaxed">
+                  <strong>Rien à configurer :</strong> lancez un débat, les 6 IA (ChatGPT, Claude, Gemini, DeepSeek, Mistral, Grok) répondent.
+                  {" "}{etatDecouverte?.quota ?? 3} débats gratuits par jour et par connexion.
+                </p>
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  Vos messages passent par le serveur d'Alphabette puis par OpenRouter, qui transmet à chaque IA. Votre adresse IP n'est pas conservée (seulement une empreinte qui change chaque jour, pour compter les débats).
+                  {etatDecouverte && !etatDecouverte.actif ? " En attendant l'ouverture, utilisez la connexion OpenRouter ci-dessous." : ""}
+                </p>
+              </section>
+
+              {/* OPENROUTER 1 CLIC */}
+              <section className="rounded-xl border border-violet-400/40 bg-gradient-to-br from-violet-500/[0.08] via-[#121217] to-[#121217] p-4 sm:p-5 space-y-3">
+                <h3 className="font-condensed font-extrabold text-base sm:text-lg uppercase tracking-wider text-white flex items-center gap-2">
+                  <Zap className="w-5 h-5 text-violet-300" />
+                  2. Illimité en 1 clic avec OpenRouter
+                </h3>
+                <p className="text-sm text-gray-200 leading-relaxed">
+                  <strong>Un seul compte pour les 6 IA</strong>, sans limite du site. Gratuit avec les modèles gratuits d'OpenRouter (en nombre limité par jour), sinon OpenRouter vous facture à l'usage.
+                </p>
+                {cleOpenRouter ? (
+                  <div className="space-y-3">
+                    <div className="flex flex-wrap items-center gap-2 text-sm font-bold text-emerald-300">
+                      <CheckCircle2 className="w-5 h-5 shrink-0" />
+                      <span>Connecté à OpenRouter</span>
+                    </div>
+                    <label className="flex items-start gap-3 cursor-pointer select-none min-h-[48px]">
+                      <input
+                        type="checkbox"
+                        checked={gratuitsOpenRouter}
+                        onChange={(e) => onChangerGratuits(e.target.checked)}
+                        className="mt-1 w-5 h-5 accent-violet-400 cursor-pointer shrink-0"
+                      />
+                      <span className="text-sm text-gray-200">
+                        <strong>Modèles gratuits uniquement</strong> (compte OpenRouter sans crédit). Quand une IA n'a pas de version gratuite, une autre IA gratuite écrit à sa place : la réplique l'indique.
+                      </span>
+                    </label>
+                    <button
+                      onClick={onDeconnecterOpenRouter}
+                      className="min-h-[48px] px-4 rounded-xl border border-white/15 bg-white/[0.04] hover:bg-white/[0.08] text-sm font-bold text-gray-200 flex items-center gap-2 cursor-pointer"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Se déconnecter d'OpenRouter
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={async () => { setConnexionEnCours(true); await connecterOpenRouter(); }}
+                    disabled={connexionEnCours}
+                    className="w-full sm:w-auto min-h-[52px] px-6 rounded-xl bg-violet-400 hover:bg-violet-300 disabled:opacity-60 text-black font-condensed font-extrabold text-sm sm:text-base uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-lg shadow-violet-500/20"
+                  >
+                    <Zap className="w-5 h-5" />
+                    {connexionEnCours ? "Ouverture d'OpenRouter…" : "Se connecter avec OpenRouter (1 clic)"}
+                  </button>
+                )}
+                {messageOpenRouter && <p className="text-sm text-gray-100" role="status">{messageOpenRouter}</p>}
+                <p className="text-xs text-gray-400 leading-relaxed">
+                  OpenRouter vous demande de vous connecter (compte Google possible) puis d'autoriser IA Débat. La clé créée reste dans ce navigateur et n'est envoyée qu'à openrouter.ai, jamais à Alphabette.
+                </p>
+              </section>
+
+              {/* VERS LE MODE EXPERT */}
+              <button
+                onClick={() => setActiveTab("keys")}
+                className="w-full min-h-[52px] rounded-xl border border-white/10 bg-[#121217] hover:border-white/25 px-4 py-3 flex items-center justify-between gap-3 text-left cursor-pointer"
+              >
+                <span className="text-sm text-gray-300">
+                  <strong className="text-white">3. Mode Expert :</strong> vous avez déjà vos propres clés (OpenAI, Anthropic, Google, DeepSeek, Mistral, xAI) ?
+                </span>
+                <ChevronRight className="w-5 h-5 text-gray-400 shrink-0" />
+              </button>
+            </div>
+          )}
+
+          {/* ═══ ONGLET EXPERT : CLÉS PERSONNELLES ═══ */}
           {activeTab === "keys" && (
             <div className="space-y-6 animate-fadeIn">
               
@@ -290,11 +418,11 @@ export function ApiKeysAndModelsModal({
                   <div className="font-bold text-white flex items-center gap-2 font-condensed uppercase tracking-wide">
                     <span>Comment fonctionne l'arène ?</span>
                     <span className="text-[10px] text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20 font-sans">
-                      Au moins une clé
+                      Mode Expert
                     </span>
                   </div>
                   <p className="leading-relaxed">
-                    <strong>Il faut au moins une clé :</strong> sans clé, aucune IA ne peut répondre. Une seule clé suffit pour commencer : l'IA de cette clé écrit aussi pour les orateurs sans clé, en imitant leur style, et chaque réplique indique qui l'a vraiment écrite.
+                    <strong>Facultatif :</strong> sans clé, le Mode Découverte ou la connexion OpenRouter font parler les IA. Avec votre clé, l'IA concernée répond directement depuis votre compte développeur (prioritaire sur les autres modes).
                     <strong> Une clé par constructeur</strong> (OpenAI, Anthropic, Google, xAI, Mistral, DeepSeek) fait parler le vrai modèle de chacun.
                     Vos clés restent dans ce navigateur et ne sont envoyées qu'au fournisseur d'IA concerné (jamais à Alphabette). Le coût vous est facturé par ce fournisseur.
                   </p>
@@ -340,7 +468,7 @@ export function ApiKeysAndModelsModal({
                               </span>
                             ) : (
                               <span className="text-[10px] text-gray-500 bg-white/[0.04] px-2 py-0.5 rounded border border-white/[0.05]">
-                                Relais Gemini
+                                Sans clé
                               </span>
                             )}
                           </div>
@@ -625,8 +753,8 @@ export function ApiKeysAndModelsModal({
         </div>
 
         {/* FOOTER */}
-        <div className="px-6 py-3.5 border-t border-white/[0.08] bg-black/50 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-2 text-xs text-gray-400">
+        <div className="px-3 sm:px-6 py-3 border-t border-white/[0.08] bg-black/50 flex items-center justify-end sm:justify-between shrink-0">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-gray-400">
             <ShieldCheck className="w-4 h-4 text-emerald-400" />
             <span>Toutes les IA débattent en totale souveraineté intellectuelle.</span>
           </div>
@@ -635,7 +763,8 @@ export function ApiKeysAndModelsModal({
             onClick={onClose}
             className="px-5 py-2 bg-[#00f5c4] hover:bg-[#00e0b0] text-black font-condensed font-bold text-xs uppercase tracking-wider rounded-lg cursor-pointer transition-all shadow-md shadow-[#00f5c4]/20"
           >
-            Fermer & Retourner à l'Arène
+            <span className="sm:hidden">Fermer</span>
+            <span className="hidden sm:inline">Fermer & Retourner à l'Arène</span>
           </button>
         </div>
 

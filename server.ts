@@ -355,7 +355,7 @@ app.get("/api/alphabette/master-prompt", (req, res) => {
 // renseignée. Sans clé, l'appli le dit clairement.
 
 const MESSAGE_SANS_CLE =
-  "Ajoutez votre clé dans Clé API (bouton « Clés API » en haut de la page) : sans clé, aucune IA ne peut répondre.";
+  "Ouvrez « Accès aux IA » (en haut de la page) : connectez-vous avec OpenRouter en 1 clic, ou ajoutez votre clé en Mode Expert.";
 
 type IdOrateur = "chatgpt" | "claude" | "gemini" | "deepseek" | "mistral" | "grok";
 
@@ -402,7 +402,7 @@ const COMPATIBLES_OPENAI: Partial<Record<IdOrateur, string>> = {
 
 const MODELES_DEPART: Record<IdOrateur, string[]> = {
   mistral: ["mistral-large-latest", "mistral-medium-latest", "mistral-small-latest"],
-  gemini: ["gemini-flash-latest", "gemini-flash-lite-latest"],
+  gemini: ["gemini-flash-latest", "gemini-flash-lite-latest", "gemini-2.5-flash"],
   claude: ["claude-haiku-5-5"],
   chatgpt: ["gpt-6-luna"],
   deepseek: ["deepseek-chat"],
@@ -522,6 +522,25 @@ async function listerModeles(id: IdOrateur, cle: string): Promise<string[]> {
   return classer(liste, [/latest$/, /fast/, /./]);
 }
 
+const MESSAGE_SOLDE_VIDE =
+  "Clé valide, mais solde API à 0 € (des crédits prépayés sont requis sur la plateforme développeur, indépendamment d'un abonnement Plus/Pro).";
+
+/** La clé est bonne mais le compte développeur n'a pas de crédit (OpenAI, Anthropic, DeepSeek, xAI, Mistral). */
+function soldeVide(statut: number, texte: string): boolean {
+  const t = texte.toLowerCase();
+  return (
+    (statut === 429 && t.includes("insufficient_quota")) ||
+    (statut === 400 && t.includes("credit balance is too low")) ||
+    (statut === 402 && /insufficient|balance|credit|payment/.test(t)) ||
+    (statut === 403 && /credits?|spending limit|billing/.test(t))
+  );
+}
+
+/** Surcharge momentanée du fournisseur : on essaie un autre modèle avant d'abandonner. */
+function surcharge(statut: number, texte: string): boolean {
+  return statut === 503 || statut === 529 || /high demand|overloaded|unavailable|spikes in demand/i.test(texte);
+}
+
 /** Erreur d'un fournisseur ; `modeleIntrouvable` indique qu'il faut essayer un autre modèle. */
 class ErreurIA extends Error {
   modeleIntrouvable: boolean;
@@ -551,8 +570,9 @@ async function appelerAvecModele(
       );
     } catch (err: any) {
       const msg = String(err?.message || err || "");
-      const statut = Number(err?.status || err?.code) || (/\b404\b|not[_ ]found/i.test(msg) ? 404 : 0);
-      throw new ErreurIA(`${nom} : ${formatErrorSummary(err)}`, !isApiKeyError(err) && modeleIntrouvable(statut, msg));
+      const statut = Number(err?.status || err?.code) || (/\b404\b|not[_ ]found/i.test(msg) ? 404 : /\b503\b/.test(msg) ? 503 : 0);
+      if (soldeVide(statut, msg)) throw new ErreurIA(`${nom} : ${MESSAGE_SOLDE_VIDE}`, false);
+      throw new ErreurIA(`${nom} : ${formatErrorSummary(err)}`, !isApiKeyError(err) && (modeleIntrouvable(statut, msg) || surcharge(statut, msg)));
     }
   }
 
@@ -588,7 +608,11 @@ async function appelerAvecModele(
   const reponse = await fetch(url, { method: "POST", signal: AbortSignal.timeout(30000), headers: enTetes, body: JSON.stringify(corps) });
   if (!reponse.ok) {
     const texte = await reponse.text();
-    throw new ErreurIA(`${nom} a refusé la demande (${reponse.status}) : ${formatErrorSummary(texte)}`, modeleIntrouvable(reponse.status, texte));
+    if (soldeVide(reponse.status, texte)) throw new ErreurIA(`${nom} : ${MESSAGE_SOLDE_VIDE}`, false);
+    throw new ErreurIA(
+      `${nom} a refusé la demande (${reponse.status}) : ${formatErrorSummary(texte)}`,
+      modeleIntrouvable(reponse.status, texte) || surcharge(reponse.status, texte)
+    );
   }
   const data = await reponse.json();
   const texte =
@@ -645,6 +669,163 @@ async function appelerIA(
   throw derniere || new Error(`${CLES_IA[id].nom} : aucun modèle disponible pour cette clé.`);
 }
 
+// ─── OpenRouter : Mode Découverte (clé d'Alphabette, via le relais du site) et connexion 1 clic ───
+// En-têtes envoyés par la page :
+//   x-iadebat-openrouter-key     clé OpenRouter du visiteur (connexion 1 clic, gardée dans son navigateur)
+//   x-iadebat-openrouter-gratuit « 1 » : seulement les modèles gratuits (« :free ») d'OpenRouter
+//   x-iadebat-decouverte         « 1 » : le Mode Découverte du site est ouvert
+//   x-iadebat-sujet              sujet du débat en cours (un « débat gratuit » = un sujet)
+
+const OR_PREFIXES: Record<IdOrateur, string> = {
+  chatgpt: "openai/", claude: "anthropic/", gemini: "google/", deepseek: "deepseek/", mistral: "mistralai/", grok: "x-ai/",
+};
+const OR_GAMMES: Record<IdOrateur, RegExp[]> = {
+  chatgpt: [/-mini/, /^openai\/gpt-[0-9.]+$/, /./],
+  claude: [/haiku/, /sonnet/],
+  gemini: [/flash(?!-lite)/, /flash-lite/, /./],
+  deepseek: [/deepseek-chat/, /v[0-9]/, /./],
+  mistral: [/mistral-small/, /mistral-medium/, /./],
+  grok: [/fast|mini/, /./],
+};
+const OR_EXCLUS = /(:extended|:beta|:thinking|:online|image|vision|audio|search|online|guard|embed|tts|realtime|preview|exp-|codex|oss|gemma|codestral|devstral|pixtral|distill|prover|nano|deep-research)/i;
+const OR_PRIX_MAX_ENTREE = 0.000003;
+const OR_PRIX_MAX_SORTIE = 0.000015;
+
+let catalogueOR: { lu: number; modeles: { id: string; cree: number; entree: number; sortie: number }[] } | null = null;
+
+async function catalogueOpenRouter() {
+  if (catalogueOR && catalogueOR.lu > Date.now() - 6 * 3600_000) return catalogueOR.modeles;
+  const r = await fetch("https://openrouter.ai/api/v1/models", { signal: AbortSignal.timeout(15000) });
+  if (!r.ok) throw new Error(`OpenRouter : liste des modèles indisponible (${r.status})`);
+  const d: any = await r.json();
+  const modeles = (d?.data || [])
+    .filter((m: any) => m?.id && (m?.architecture?.output_modalities ?? ["text"]).includes("text"))
+    .map((m: any) => ({ id: String(m.id), cree: Number(m.created) || 0, entree: Number(m?.pricing?.prompt ?? 1), sortie: Number(m?.pricing?.completion ?? 1) }));
+  catalogueOR = { lu: Date.now(), modeles };
+  return modeles;
+}
+
+/** Modèles OpenRouter d'un orateur, du plus adapté au moins adapté (gammes économiques, plus récent d'abord). */
+async function modelesOpenRouter(id: IdOrateur, gratuits: boolean): Promise<string[]> {
+  const gammes = OR_GAMMES[id];
+  const rang = (m: string) => { const i = gammes.findIndex((g) => g.test(m)); return i === -1 ? gammes.length : i; };
+  return (await catalogueOpenRouter())
+    .filter((m) => m.id.startsWith(OR_PREFIXES[id]))
+    .filter((m) => gratuits
+      ? m.id.endsWith(":free") && !OR_EXCLUS.test(m.id.slice(0, -5))
+      : !m.id.endsWith(":free") && !OR_EXCLUS.test(m.id) && m.entree > 0 && m.entree <= OR_PRIX_MAX_ENTREE && m.sortie <= OR_PRIX_MAX_SORTIE)
+    .sort((a, b) => rang(a.id) - rang(b.id) || b.cree - a.cree)
+    .map((m) => m.id);
+}
+
+function fournisseurDuModele(modele: string): string {
+  for (const id of Object.keys(OR_PREFIXES) as IdOrateur[]) if (modele.startsWith(OR_PREFIXES[id])) return CLES_IA[id].fournisseur;
+  return modele.split("/")[0];
+}
+
+/** Connexion 1 clic : le visiteur paie OpenRouter lui-même (ou utilise les modèles gratuits). */
+async function appelerOpenRouterVisiteur(
+  id: IdOrateur, cle: string, gratuits: boolean, systeme: string, prompt: string, maxTokens: number, temperature: number
+): Promise<{ text: string; modelUsed: string; provider: string }> {
+  let liste = (await modelesOpenRouter(id, gratuits)).slice(0, 3);
+  if (liste.length === 0 && gratuits) {
+    // Pas de modèle gratuit chez ce fournisseur : un modèle gratuit d'un autre (la réplique le dira).
+    for (const autre of ["deepseek", "gemini", "mistral", "chatgpt"] as IdOrateur[]) {
+      const l = await modelesOpenRouter(autre, true);
+      if (l.length) { liste = l.slice(0, 2); break; }
+    }
+  }
+  if (liste.length === 0) throw new Error(`OpenRouter : aucun modèle ${CLES_IA[id].nom}${gratuits ? " gratuit" : ""} disponible.`);
+  let derniere = "";
+  for (let i = 0; i < liste.length; i++) {
+    const r = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      signal: AbortSignal.timeout(60000),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${cle}`,
+        "HTTP-Referer": "https://alphabette.eu/apps/iadebat/",
+        "X-Title": "IA Debat - Alphabette",
+      },
+      body: JSON.stringify({
+        model: liste[i],
+        models: liste.slice(i, i + 3), // secours automatique d'OpenRouter (surcharge, indisponibilité)
+        max_tokens: maxTokens,
+        temperature,
+        messages: [{ role: "system", content: systeme }, { role: "user", content: prompt }],
+      }),
+    });
+    const texte = await r.text();
+    if (r.ok) {
+      const d = JSON.parse(texte);
+      const contenu = String(d?.choices?.[0]?.message?.content || "");
+      const modele = String(d?.model || liste[i]);
+      if (contenu.trim()) return { text: contenu, modelUsed: modele, provider: fournisseurDuModele(modele) };
+      derniere = "réponse vide";
+      continue;
+    }
+    derniere = formatErrorSummary(texte);
+    if (r.status === 401) throw new Error("OpenRouter : connexion expirée. Reconnectez-vous (Accès aux IA → Se connecter avec OpenRouter).");
+    if (r.status === 402) throw new Error("OpenRouter : crédit épuisé sur votre compte. Cochez « Modèles gratuits uniquement » ou ajoutez du crédit sur openrouter.ai.");
+    // 429, 5xx, modèle introuvable : modèle suivant
+  }
+  throw new Error(`OpenRouter : ${CLES_IA[id].nom} indisponible (${derniere}).`);
+}
+
+/** Relais du Mode Découverte (sur le site d'Alphabette). */
+const RELAIS_DECOUVERTE = (() => {
+  try {
+    const h = (globalThis as any).location?.hostname || "";
+    if (h === "alphabette.fr" || h === "alphabette.eu") return `${(globalThis as any).location.origin}/api/iadebat-proxy.php`;
+  } catch { /* hors navigateur */ }
+  return "https://alphabette.eu/api/iadebat-proxy.php";
+})();
+const ticketsDecouverte = new Map<string, string>();
+
+async function postDecouverte(corps: any): Promise<{ status: number; data: any }> {
+  const r = await fetch(RELAIS_DECOUVERTE, {
+    method: "POST",
+    signal: AbortSignal.timeout(90000),
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(corps),
+  });
+  return { status: r.status, data: await r.json().catch(() => ({})) };
+}
+
+function erreurQuota(message: string): Error {
+  const e: any = new Error(message);
+  e.quotaDecouverte = true;
+  return e;
+}
+
+/** Mode Découverte : un ticket par sujet (= 1 des 3 débats gratuits du jour), puis les répliques. */
+async function appelerDecouverte(
+  id: IdOrateur, sujet: string, divers: boolean, systeme: string, prompt: string, maxTokens: number, temperature: number
+): Promise<{ text: string; modelUsed: string; provider: string }> {
+  for (let essai = 0; essai < 2; essai++) {
+    let ticket = "";
+    if (!divers) {
+      ticket = ticketsDecouverte.get(sujet) || "";
+      if (!ticket) {
+        const d = await postDecouverte({ action: "debut", sujet: sujet.slice(0, 200) });
+        if (d.status === 429) throw erreurQuota(d.data?.erreur || "Débats gratuits du jour épuisés.");
+        if (d.status !== 200 || !d.data?.ticket) throw new Error(d.data?.erreur || `Mode Découverte indisponible (${d.status}).`);
+        ticket = d.data.ticket;
+        ticketsDecouverte.set(sujet, ticket);
+      }
+    }
+    const r = await postDecouverte({ action: "generer", ticket, divers, orateur: id, systeme, prompt, max_tokens: maxTokens, temperature });
+    if (r.status === 200 && r.data?.texte) return { text: String(r.data.texte), modelUsed: String(r.data.modele || ""), provider: String(r.data.fournisseur || CLES_IA[id].fournisseur) };
+    if (r.status === 401 && r.data?.ticket && !divers) { ticketsDecouverte.delete(sujet); continue; }
+    if (r.status === 429) {
+      if (r.data?.fin_debat) ticketsDecouverte.delete(sujet);
+      throw erreurQuota(r.data?.erreur || "Débats gratuits du jour épuisés.");
+    }
+    throw new Error(r.data?.erreur || `Mode Découverte : ${CLES_IA[id].nom} n'a pas répondu (${r.status}).`);
+  }
+  throw new Error("Mode Découverte : ticket refusé. Réessayez.");
+}
+
 interface TexteEcrit {
   text: string;
   provider: string;
@@ -654,45 +835,79 @@ interface TexteEcrit {
   notice?: string;
 }
 
-/** Fait écrire une IA : celle demandée si sa clé existe, sinon une autre clé enregistrée. */
+type SourceIA = { type: "cle" | "openrouter" | "decouverte"; id: IdOrateur };
+
+/**
+ * Fait écrire une IA. Pour l'orateur demandé : sa clé personnelle (Mode Expert), sinon la connexion
+ * OpenRouter du visiteur, sinon le Mode Découverte. En dernier recours, une autre clé personnelle écrit
+ * à sa place (la réplique l'indique).
+ */
 async function ecrireAvecLesCles(
   headers: any,
   systeme: string,
   prompt: string,
-  options: { maxTokens: number; temperature?: number; prefere?: IdOrateur }
+  options: { maxTokens: number; temperature?: number; prefere?: IdOrateur; divers?: boolean }
 ): Promise<TexteEcrit> {
-  const ordre = options.prefere ? [options.prefere, ...ORDRE_RELAIS.filter((i) => i !== options.prefere)] : ORDRE_RELAIS;
-  const disponibles = ordre.filter((id) => cleDe(headers, id));
-  if (disponibles.length === 0) {
+  const prefere: IdOrateur = options.prefere ?? "gemini";
+  const cleOR = lireEntete(headers, "x-iadebat-openrouter-key");
+  const gratuitsOR = lireEntete(headers, "x-iadebat-openrouter-gratuit") === "1";
+  const decouverte = lireEntete(headers, "x-iadebat-decouverte") === "1";
+  let sujet = "";
+  try { sujet = decodeURIComponent(lireEntete(headers, "x-iadebat-sujet")); } catch { sujet = ""; }
+  const divers = Boolean(options.divers) || !sujet;
+
+  const sources: SourceIA[] = [];
+  if (cleDe(headers, prefere)) sources.push({ type: "cle", id: prefere });
+  if (cleOR) sources.push({ type: "openrouter", id: prefere });
+  else if (decouverte) sources.push({ type: "decouverte", id: prefere });
+  for (const id of ORDRE_RELAIS) if (id !== prefere && cleDe(headers, id)) sources.push({ type: "cle", id });
+  if (sources.length === 0) {
     const e: any = new Error(MESSAGE_SANS_CLE);
     e.sansCle = true;
     throw e;
   }
 
   const echecs: string[] = [];
-  for (const id of disponibles) {
+  let quota: any = null;
+  const temperature = options.temperature ?? 0.85;
+  for (const s of sources) {
+    const nom = CLES_IA[s.id].nom;
     try {
-      const r = await appelerIA(id, cleDe(headers, id), systeme, prompt, options.maxTokens, options.temperature ?? 0.85);
+      let r: { text: string; modelUsed: string; provider: string };
+      if (s.type === "cle") {
+        const d = await appelerIA(s.id, cleDe(headers, s.id), systeme, prompt, options.maxTokens, temperature);
+        r = { ...d, provider: CLES_IA[s.id].fournisseur };
+      } else if (s.type === "openrouter") {
+        r = await appelerOpenRouterVisiteur(s.id, cleOR, gratuitsOR, systeme, prompt, options.maxTokens, temperature);
+      } else {
+        r = await appelerDecouverte(s.id, sujet || "divers", divers, systeme, prompt, options.maxTokens, temperature);
+      }
       if (r.text.trim()) {
+        const via = s.type === "openrouter" ? " (OpenRouter)" : s.type === "decouverte" ? " (Découverte)" : "";
+        const nomReel = Object.values(CLES_IA).find((c) => c.fournisseur === r.provider)?.nom || r.provider;
         return {
           text: r.text,
-          provider: CLES_IA[id].fournisseur,
+          provider: r.provider,
           modelUsed: r.modelUsed,
-          ecritPar: `${CLES_IA[id].nom} · ${r.modelUsed}`,
-          notice: echecs.length ? `${echecs.join(" ; ")} — relais par ${CLES_IA[id].nom}` : undefined,
+          ecritPar: `${nomReel} · ${r.modelUsed}${via}`,
+          notice: echecs.length ? `${echecs.join(" ; ")} — relais par ${nomReel}` : undefined,
         };
       }
-      echecs.push(`${CLES_IA[id].nom} : réponse vide`);
+      echecs.push(`${nom} : réponse vide`);
     } catch (err: any) {
-      console.warn(`[IADÉBAT] ${CLES_IA[id].nom} indisponible : ${formatErrorSummary(err)}`);
-      echecs.push(`${CLES_IA[id].nom} : ${formatErrorSummary(err)}`);
+      if (err?.quotaDecouverte) quota = err;
+      console.warn(`[IADÉBAT] ${nom} indisponible : ${formatErrorSummary(err)}`);
+      echecs.push(`${nom} : ${err?.message ? String(err.message).slice(0, 220) : formatErrorSummary(err)}`);
     }
   }
-  throw new Error(`Aucune de vos clés n'a répondu (${echecs.join(" ; ")}). Vérifiez-les dans Clé API (clé valide, crédit disponible).`);
+  if (quota) throw quota;
+  if (sources.length === 1) throw new Error(echecs[0] || "L'IA n'a pas répondu.");
+  throw new Error(`Aucune IA n'a répondu (${echecs.join(" ; ")}).`);
 }
 
 function repondreErreurIA(res: any, err: any) {
-  return res.status(err?.sansCle ? 400 : 502).json({ error: err?.message || "L'IA n'a pas répondu.", sansCle: Boolean(err?.sansCle) });
+  const statut = err?.sansCle ? 400 : err?.quotaDecouverte ? 429 : 502;
+  return res.status(statut).json({ error: err?.message || "L'IA n'a pas répondu.", sansCle: Boolean(err?.sansCle), quotaDecouverte: Boolean(err?.quotaDecouverte) });
 }
 
 /** Extrait l'objet ou le tableau JSON d'une réponse d'IA (avec ou sans balises ```json). */
@@ -743,6 +958,7 @@ Le retour doit être un tableau JSON valide. Ne renvoie AUCUN texte introductif 
     const r = await ecrireAvecLesCles(req.headers, "Tu proposes des sujets de débat en français et tu réponds uniquement en JSON.", prompt, {
       maxTokens: 900,
       temperature: 0.8,
+      divers: true,
     });
     const liste = lireJsonIA(r.text, "[");
     if (!Array.isArray(liste)) throw new Error("L'IA a répondu dans un format illisible : réessayez.");
@@ -764,7 +980,7 @@ app.post("/api/debate/test-key", async (req, res) => {
     const r = await appelerIA(provider as IdOrateur, key.trim(), "Tu réponds en français, très brièvement.", "Réponds simplement « Test réussi ».", 300, 0.2);
     return res.json({ success: true, provider, modelUsed: r.modelUsed, latencyMs: Date.now() - startTime, reply: r.text.trim() || "OK" });
   } catch (err: any) {
-    return res.json({ success: false, provider, error: formatErrorSummary(err) });
+    return res.json({ success: false, provider, error: String(err?.message || formatErrorSummary(err)).slice(0, 300) });
   }
 });
 
@@ -932,6 +1148,7 @@ Réponds STRICTEMENT sous format JSON valide :
     const r = await ecrireAvecLesCles(req.headers, "Tu écris des scénarios de fiction en français et tu réponds uniquement en JSON.", prompt, {
       maxTokens: 1200,
       temperature: 0.85,
+      divers: true,
     });
     const liste = lireJsonIA(r.text, "[");
     if (!Array.isArray(liste)) throw new Error("L'IA a répondu dans un format illisible : réessayez.");
