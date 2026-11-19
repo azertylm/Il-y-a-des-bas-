@@ -394,7 +394,7 @@ export function AlphabetteAccountModal({
                         <span>Intelligence artificielle</span>
                       </div>
                       <div className="text-xs text-gray-200">
-                        <strong>Vos propres clés</strong> (ChatGPT, Claude, Gemini, DeepSeek, Mistral, Grok)
+                        <strong>Vos propres clés</strong> (ChatGPT, Claude, Gemini, DeepSeek, Mistral, Llama)
                       </div>
                       <div className="text-[11px] text-gray-400 mt-0.5">
                         {currentAccount.mistralApiKey ? "Clé Mistral de ce compte : utilisée pour Mistral" : "Ajoutez vos clés avec le bouton « Clés API »"}

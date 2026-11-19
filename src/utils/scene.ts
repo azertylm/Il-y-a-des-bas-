@@ -238,7 +238,7 @@ const TIMBRES: Record<string, { pitch: number; rate: number; rangVoix: number }>
   gemini: { pitch: 1.15, rate: 1.08, rangVoix: 2 },
   deepseek: { pitch: 0.8, rate: 1.0, rangVoix: 3 },
   mistral: { pitch: 1.05, rate: 1.0, rangVoix: 4 },
-  grok: { pitch: 1.25, rate: 1.12, rangVoix: 5 },
+  llama: { pitch: 1.2, rate: 1.1, rangVoix: 5 },
   user: { pitch: 1.0, rate: 1.0, rangVoix: 0 },
 };
 

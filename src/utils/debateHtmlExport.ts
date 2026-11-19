@@ -30,7 +30,7 @@ export function getWinnerDisplayName(winnerId?: string): string {
     case "gemini": return "Gemini (Google)";
     case "deepseek": return "DeepSeek";
     case "mistral": return "Mistral AI";
-    case "grok": return "Grok (xAI)";
+    case "llama": return "Llama (Meta)";
     default: return winnerId;
   }
 }
@@ -747,7 +747,7 @@ export function generateStandaloneHtmlDocument(
       <button type="button" class="pill" onclick="setSpeakerFilter('gemini', this)">Gemini</button>
       <button type="button" class="pill" onclick="setSpeakerFilter('deepseek', this)">DeepSeek</button>
       <button type="button" class="pill" onclick="setSpeakerFilter('mistral', this)">Mistral</button>
-      <button type="button" class="pill" onclick="setSpeakerFilter('grok', this)">Grok</button>
+      <button type="button" class="pill" onclick="setSpeakerFilter('llama', this)">Llama</button>
     </div>
   </nav>
 

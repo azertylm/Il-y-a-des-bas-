@@ -140,7 +140,7 @@ ${data.concludingSeal}
 
 (Texte imaginaire écrit par ${data.ecritPar || "une IA"}, sans valeur juridique.)
 
-Signataires : ChatGPT • Claude • Gemini • DeepSeek • Mistral • Grok • Public Citoyen`;
+Signataires : ChatGPT • Claude • Gemini • DeepSeek • Mistral • Llama • Public Citoyen`;
 
     navigator.clipboard.writeText(text);
     setCopied(true);

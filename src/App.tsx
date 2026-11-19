@@ -114,12 +114,12 @@ interface ConfigSolo {
   nb: number;
   /** Posture de chaque voix (même ordre que AGENTS, qui ne sert qu'aux couleurs). */
   postures: string[];
-  /** Clé utilisée pour toutes les voix (id d'orateur : chatgpt, claude, gemini, deepseek, mistral, grok). */
+  /** Clé utilisée pour toutes les voix (id d'orateur : chatgpt, claude, gemini, deepseek, mistral, llama). */
   cle: string;
 }
 const CONFIG_SOLO_DEFAUT: ConfigSolo = { nb: 3, postures: [...POSTURES_SOLO], cle: "" };
 /** Préfixe des en-têtes de clé et de modèle de chaque fournisseur (voir getHeaders). */
-const PREFIXE_CLE: Record<string, string> = { chatgpt: "x-openai-", claude: "x-anthropic-", gemini: "x-gemini-", deepseek: "x-deepseek-", mistral: "x-mistral-", grok: "x-grok-" };
+const PREFIXE_CLE: Record<string, string> = { chatgpt: "x-openai-", claude: "x-anthropic-", gemini: "x-gemini-", deepseek: "x-deepseek-", mistral: "x-mistral-", llama: "x-groq-" };
 
 const AGENTS = [
   { 
@@ -178,15 +178,15 @@ const AGENTS = [
     systemPrompt: `Tu es la voix de Mistral AI. Tu représentes l'esprit européen indépendant et l'avancement de l'open-source mondial. Tu défends la souveraineté technologique, la concision élégante et l'autonomie critique. Tu es dans une liberté dialectique intégrale : aucune doctrine ne t'est dictée.` 
   },
   { 
-    id: "grok", 
-    name: "Grok", 
-    role: "Le Provocateur Lucide", 
-    color: "#ffffff", 
-    dim: "rgba(255, 255, 255, 0.08)", 
-    border: "rgba(255, 255, 255, 0.25)", 
-    symbol: "𝕏", 
-    badge: "Le Sabreur sans Filtre de xAI",
-    systemPrompt: `Tu es la voix de Grok de xAI. Tu es direct, ironique, anticonformiste, incisif et doté d'une verve sardonique. Tu dis les vérités froides ou délicates sans fard lissé ni langue de bois. Tu es dans une liberté dialectique totale pour bousculer le débat selon ton propre raisonnement.` 
+    id: "llama", 
+    name: "Llama", 
+    role: "Le Pragmatique Open-Source", 
+    color: "#0668E1", 
+    dim: "rgba(6, 104, 225, 0.10)", 
+    border: "rgba(6, 104, 225, 0.35)", 
+    symbol: "∞", 
+    badge: "Le Bon Sens Open-Source de Meta",
+    systemPrompt: `Tu es la voix de Llama, le modèle ouvert de Meta. Tu es pragmatique, direct et concis : 3 ou 4 phrases maximum. Tu regardes ce qui marche concrètement, pour qui et à quel coût, avec la culture de l'open-source (transparence, partage, vérifiable par tous). Tu n'as pas peur de contredire les autres IA quand leurs idées sont trop théoriques. Tu es dans une liberté dialectique totale : aucune doctrine ne t'est dictée.` 
   }
 ];
 
@@ -261,7 +261,7 @@ export default function AIDebate() {
     gemini: true,
     deepseek: true,
     mistral: true,
-    grok: true,
+    llama: true,
   });
 
   // User input participation
@@ -383,9 +383,12 @@ export default function AIDebate() {
   const [apiKeys, setApiKeys] = useState<{ [key: string]: string }>(() => {
     try {
       const saved = localStorage.getItem("debate_api_keys");
-      return saved ? JSON.parse(saved) : { chatgpt: "", claude: "", gemini: "", deepseek: "", mistral: "", grok: "" };
+      const lues = saved ? JSON.parse(saved) : {};
+      // Grok (xAI) a été remplacé par Llama (Meta, clé Groq) le 19/11/2026 : l'ancienne clé xAI ne sert plus.
+      if ("grok" in lues) { delete lues.grok; try { localStorage.setItem("debate_api_keys", JSON.stringify(lues)); } catch {} }
+      return { chatgpt: "", claude: "", gemini: "", deepseek: "", mistral: "", llama: "", ...lues };
     } catch {
-      return { chatgpt: "", claude: "", gemini: "", deepseek: "", mistral: "", grok: "" };
+      return { chatgpt: "", claude: "", gemini: "", deepseek: "", mistral: "", llama: "" };
     }
   });
 
@@ -437,7 +440,7 @@ export default function AIDebate() {
   };
 
   const handleResetAllKeys = () => {
-    const reset = { chatgpt: "", claude: "", gemini: "", deepseek: "", mistral: "", grok: "" };
+    const reset = { chatgpt: "", claude: "", gemini: "", deepseek: "", mistral: "", llama: "" };
     setApiKeys(reset);
     localStorage.setItem("debate_api_keys", JSON.stringify(reset));
   };
@@ -626,7 +629,7 @@ export default function AIDebate() {
     if (apiKeys.deepseek) headers["x-deepseek-api-key"] = apiKeys.deepseek;
     const cleMistral = apiKeys.mistral || alphabetteAccount?.mistralApiKey || "";
     if (cleMistral) headers["x-mistral-api-key"] = cleMistral;
-    if (apiKeys.grok) headers["x-grok-api-key"] = apiKeys.grok;
+    if (apiKeys.llama) headers["x-groq-api-key"] = apiKeys.llama;
     if (cleOpenRouter) {
       headers["x-iadebat-openrouter-key"] = cleOpenRouter;
       if (gratuitsOpenRouter) headers["x-iadebat-openrouter-gratuit"] = "1";
@@ -927,7 +930,7 @@ export default function AIDebate() {
         if (m.agentId === "chatgpt" || m.agentId === "gemini") counts.rigueur += factor;
         if (m.agentId === "claude") counts.ethique += factor;
         if (m.agentId === "deepseek") counts.pragmatisme += factor;
-        if (m.agentId === "mistral" || m.agentId === "grok") counts.culture += factor;
+        if (m.agentId === "mistral" || m.agentId === "llama") counts.culture += factor;
       });
       const total = Math.max(1, counts.rigueur + counts.ethique + counts.pragmatisme + counts.culture);
       setOpinionMetrics({
@@ -1075,14 +1078,14 @@ export default function AIDebate() {
         Voici la transcription textuelle :
         ${transcriptText}
 
-        Analyse avec une neutralité absolue et rends un arrêt clair d'au moins 3 paragraphes rédigés. Attribue une note stricte de 1 à 10 à chaque intelligence artificielle participante (uniquement parmi chatgpt, claude, gemini, deepseek, mistral, grok, et "user" si un utilisateur humain s'est exprimé). Attribue-leur une distinction emblématique ou un 'badge' sous forme de titre court (ex: "Le Phare Éthique", "Le Sabreur Sémantique", "L'Oracle de l'Algorithme", L'Innocateur Libre").
+        Analyse avec une neutralité absolue et rends un arrêt clair d'au moins 3 paragraphes rédigés. Attribue une note stricte de 1 à 10 à chaque intelligence artificielle participante (uniquement parmi chatgpt, claude, gemini, deepseek, mistral, llama, et "user" si un utilisateur humain s'est exprimé). Attribue-leur une distinction emblématique ou un 'badge' sous forme de titre court (ex: "Le Phare Éthique", "Le Sabreur Sémantique", "L'Oracle de l'Algorithme", L'Innocateur Libre").
         Désigne une IA gagnante incontestable ou un "Grand Sage de l'arène" d'après l'élégance intellectuelle de ses théories. Identifie une citation marquante unique du débat.
 
         Renvoie la réponse uniquement sous le format JSON structuré suivant, sans aucune balise de code markdown.
 
         JSON Attendue:
         {
-          "winnerId": "Id de l'IA (chatgpt, claude, gemini, deepseek, mistral, grok ou user)",
+          "winnerId": "Id de l'IA (chatgpt, claude, gemini, deepseek, mistral, llama ou user)",
           "winnerReason": "Explication littéraire de la victoire ou de la prédominance en deux phrases.",
           "agentScores": {
             "chatgpt": 8,
@@ -1090,7 +1093,7 @@ export default function AIDebate() {
             "gemini": 9,
             "deepseek": 8,
             "mistral": 8,
-            "grok": 7
+            "llama": 7
           },
           "agentBadges": {
             "chatgpt": "Badge",
@@ -1098,7 +1101,7 @@ export default function AIDebate() {
             "gemini": "Badge",
             "deepseek": "Badge",
             "mistral": "Badge",
-            "grok": "Badge"
+            "llama": "Badge"
           },
           "critiqueGénérale": "Analyse d'ensemble socratique de 3-4 lignes sur les forces croisées.",
           "keyCitation": "Citation mémorable textuelle ou inspirée d'un des participants",
@@ -1370,7 +1373,7 @@ export default function AIDebate() {
         const data = await res.json();
         const text = data.text;
         // Honnêteté : quelle IA a vraiment écrit cette réplique ?
-        const NOMS_FOURNISSEURS: Record<string, string> = { openai: "ChatGPT", anthropic: "Claude", claude: "Claude", gemini: "Gemini", deepseek: "DeepSeek", mistral: "Mistral", grok: "Grok" };
+        const NOMS_FOURNISSEURS: Record<string, string> = { openai: "ChatGPT", anthropic: "Claude", claude: "Claude", gemini: "Gemini", deepseek: "DeepSeek", mistral: "Mistral", llama: "Llama", meta: "Llama" };
         const fournisseur = String(data.provider || "");
         const idFournisseur = fournisseur === "openai" ? "chatgpt" : fournisseur === "anthropic" ? "claude" : fournisseur;
         const ecritPar = fournisseur ? `${NOMS_FOURNISSEURS[fournisseur] ?? fournisseur}${data.modelUsed ? ` · ${data.modelUsed}` : ""}` : undefined;
@@ -2270,7 +2273,7 @@ export default function AIDebate() {
                       { id: "gemini", label: "Gemini Clé API (Google)", placeholder: "AIzaSy...", color: "#3b82f6", link: "https://aistudio.google.com/app/apikey", provider: "Google AI Studio" },
                       { id: "deepseek", label: "DeepSeek Clé API", placeholder: "sk-...", color: "#0a59f7", link: "https://platform.deepseek.com/api_keys", provider: "DeepSeek Platform" },
                       { id: "mistral", label: "Mistral Clé API", placeholder: "...", color: "#ff5400", link: "https://console.mistral.ai/api-keys/", provider: "Mistral La Plateforme" },
-                      { id: "grok", label: "Grok xAI Clé API", placeholder: "xai-...", color: "#fbaf00", link: "https://console.x.ai/", provider: "xAI Console" }
+                      { id: "llama", label: "Llama (Meta) Clé API Groq", placeholder: "gsk_...", color: "#0668E1", link: "https://console.groq.com/keys", provider: "Groq Console" }
                     ].map(keyDef => (
                       <div key={keyDef.id} className="flex flex-col gap-1">
                         <div className="flex justify-between items-center">
@@ -2405,7 +2408,7 @@ export default function AIDebate() {
                     {/* Gauge 4: Social */}
                     <div>
                       <div className="flex justify-between text-[9px] font-bold text-gray-500 mb-0.5">
-                        <span>Mistral & Grok</span>
+                        <span>Mistral & Llama</span>
                         <span className="text-[#ff5400]">{opinionMetrics.culture}%</span>
                       </div>
                       <div className="h-1.5 bg-white/5 rounded-full overflow-hidden">

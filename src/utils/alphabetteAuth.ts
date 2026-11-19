@@ -85,7 +85,7 @@ export const ALPHABETTE_APPS = [
   {
     id: "iadebat",
     name: "IADébat",
-    desc: "Débats entre IA (ChatGPT, Claude, Gemini, DeepSeek, Mistral, Grok) avec vos propres clés.",
+    desc: "Débats entre IA (ChatGPT, Claude, Gemini, DeepSeek, Mistral, Llama) avec vos propres clés.",
     badge: "Débat & Vérité",
     icon: "MessageSquare",
     active: true,

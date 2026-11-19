@@ -107,7 +107,7 @@ export function QuotaExceededModal({
                     Renseigner ma Clé API (BYOK)
                   </div>
                   <div className="text-xs text-white/60">
-                    Mistral, Google Gemini, OpenAI, Anthropic, DeepSeek, Grok.
+                    Mistral, Google Gemini, OpenAI, Anthropic, DeepSeek, Meta Llama (via Groq).
                   </div>
                 </div>
               </div>

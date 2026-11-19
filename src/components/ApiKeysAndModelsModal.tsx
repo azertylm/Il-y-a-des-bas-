@@ -94,15 +94,15 @@ export const PROVIDERS_CONFIG: ApiProviderConfig[] = [
     placeholder: "...",
   },
   {
-    id: "grok",
-    name: "Grok",
-    creator: "xAI",
-    badge: "xAI Cloud Console",
-    color: "#ffffff",
-    symbol: "𝕏",
-    keyLink: "https://console.x.ai/",
-    docsLink: "https://docs.x.ai/docs/models",
-    placeholder: "xai-...",
+    id: "llama",
+    name: "Llama",
+    creator: "Meta, via Groq",
+    badge: "Groq Console (clé gratuite)",
+    color: "#0668E1",
+    symbol: "∞",
+    keyLink: "https://console.groq.com/keys",
+    docsLink: "https://console.groq.com/docs/models",
+    placeholder: "gsk_...",
   }
 ];
 
@@ -335,7 +335,7 @@ export function ApiKeysAndModelsModal({
                   )}
                 </div>
                 <p className="text-sm text-gray-200 leading-relaxed">
-                  <strong>Rien à configurer :</strong> lancez un débat, les 6 IA (ChatGPT, Claude, Gemini, DeepSeek, Mistral, Grok) répondent.
+                  <strong>Rien à configurer :</strong> lancez un débat, les 6 IA (ChatGPT, Claude, Gemini, DeepSeek, Mistral, Llama) répondent.
                   {" "}{etatDecouverte?.quota ?? 3} débats gratuits par jour et par connexion.
                 </p>
                 <p className="text-xs text-gray-400 leading-relaxed">
@@ -400,7 +400,7 @@ export function ApiKeysAndModelsModal({
                 className="w-full min-h-[52px] rounded-xl border border-white/10 bg-[#121217] hover:border-white/25 px-4 py-3 flex items-center justify-between gap-3 text-left cursor-pointer"
               >
                 <span className="text-sm text-gray-300">
-                  <strong className="text-white">3. Mode Expert :</strong> vous avez déjà vos propres clés (OpenAI, Anthropic, Google, DeepSeek, Mistral, xAI) ?
+                  <strong className="text-white">3. Mode Expert :</strong> vous avez déjà vos propres clés (OpenAI, Anthropic, Google, DeepSeek, Mistral, Groq pour Llama) ?
                 </span>
                 <ChevronRight className="w-5 h-5 text-gray-400 shrink-0" />
               </button>
@@ -423,7 +423,7 @@ export function ApiKeysAndModelsModal({
                   </div>
                   <p className="leading-relaxed">
                     <strong>Facultatif :</strong> sans clé, le Mode Découverte ou la connexion OpenRouter font parler les IA. Avec votre clé, l'IA concernée répond directement depuis votre compte développeur (prioritaire sur les autres modes).
-                    <strong> Une clé par constructeur</strong> (OpenAI, Anthropic, Google, xAI, Mistral, DeepSeek) fait parler le vrai modèle de chacun.
+                    <strong> Une clé par constructeur</strong> (OpenAI, Anthropic, Google, DeepSeek, Mistral, et Groq pour Llama) fait parler le vrai modèle de chacun.
                     Vos clés restent dans ce navigateur et ne sont envoyées qu'au fournisseur d'IA concerné (jamais à Alphabette). Le coût vous est facturé par ce fournisseur.
                   </p>
                 </div>
@@ -676,10 +676,10 @@ export function ApiKeysAndModelsModal({
                     </div>
                   </div>
                   <div className="flex items-start gap-2 bg-black/40 p-2.5 rounded-lg border border-white/[0.04]">
-                    <span className="w-2 h-2 rounded-full bg-white mt-1 shrink-0" />
+                    <span className="w-2 h-2 rounded-full bg-[#0668E1] mt-1 shrink-0" />
                     <div>
-                      <strong className="text-white">Grok (xAI) :</strong>
-                      <span className="text-gray-400"> Casse les consensus polis avec un esprit provocateur, mordant et refuse les discours convenus.</span>
+                      <strong className="text-white">Llama (Meta) :</strong>
+                      <span className="text-gray-400"> Va droit au concret avec un regard open-source : ce qui marche, pour qui, à quel coût.</span>
                     </div>
                   </div>
                 </div>

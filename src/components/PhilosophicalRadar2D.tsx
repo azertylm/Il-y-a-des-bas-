@@ -31,7 +31,7 @@ export function PhilosophicalRadar2D({ messages, activeAgentsFlags, onHide }: Ph
       gemini: { x: 35, y: -25, ideology: "Techno-Symbiose & Progrès Multimodal" },
       deepseek: { x: 75, y: 15, ideology: "Rationalisme Computationnel & Efficience Pure" },
       mistral: { x: 10, y: 60, ideology: "Souverainisme Ouvert & Écosystème Décentralisé" },
-      grok: { x: 80, y: 80, ideology: "Accélérationnisme Radical & Pragmatisme Cru" },
+      llama: { x: 75, y: 70, ideology: "Pragmatisme Open-Source & Bon Sens" },
       user: { x: -10, y: 0, ideology: "Conscience Citoyenne & Libre Arbitre" }
     };
 
@@ -48,7 +48,7 @@ export function PhilosophicalRadar2D({ messages, activeAgentsFlags, onHide }: Ph
       { id: "gemini", name: "Gemini", symbol: "✦", color: "#3b82f6" },
       { id: "deepseek", name: "DeepSeek", symbol: "🐳", color: "#0a59f7" },
       { id: "mistral", name: "Mistral", symbol: "⬘", color: "#ff5400" },
-      { id: "grok", name: "Grok", symbol: "𝕏", color: "#ffffff" },
+      { id: "llama", name: "Llama", symbol: "∞", color: "#0668E1" },
     ];
 
     if (messages.some(m => m.isUser)) {

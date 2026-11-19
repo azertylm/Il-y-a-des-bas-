@@ -357,7 +357,7 @@ app.get("/api/alphabette/master-prompt", (req, res) => {
 const MESSAGE_SANS_CLE =
   "Ouvrez « Accès aux IA » (en haut de la page) : connectez-vous avec OpenRouter en 1 clic, ou ajoutez votre clé en Mode Expert.";
 
-type IdOrateur = "chatgpt" | "claude" | "gemini" | "deepseek" | "mistral" | "grok";
+type IdOrateur = "chatgpt" | "claude" | "gemini" | "deepseek" | "mistral" | "llama";
 
 const CLES_IA: Record<IdOrateur, { entete: string; nom: string; fournisseur: string }> = {
   mistral: { entete: "x-mistral-api-key", nom: "Mistral", fournisseur: "mistral" },
@@ -365,12 +365,12 @@ const CLES_IA: Record<IdOrateur, { entete: string; nom: string; fournisseur: str
   claude: { entete: "x-anthropic-api-key", nom: "Claude", fournisseur: "anthropic" },
   chatgpt: { entete: "x-openai-api-key", nom: "ChatGPT", fournisseur: "openai" },
   deepseek: { entete: "x-deepseek-api-key", nom: "DeepSeek", fournisseur: "deepseek" },
-  grok: { entete: "x-grok-api-key", nom: "Grok", fournisseur: "grok" },
+  llama: { entete: "x-groq-api-key", nom: "Llama", fournisseur: "llama" },
 };
 
 // Quand l'orateur n'a pas de clé, une autre IA dont la clé est enregistrée écrit
 // à sa place (la réplique l'indique). Mistral d'abord : IA souveraine (règle nº 5).
-const ORDRE_RELAIS: IdOrateur[] = ["mistral", "gemini", "claude", "chatgpt", "deepseek", "grok"];
+const ORDRE_RELAIS: IdOrateur[] = ["mistral", "gemini", "claude", "chatgpt", "deepseek", "llama"];
 
 function lireEntete(headers: any, nom: string): string {
   const v = headers?.[nom];
@@ -390,7 +390,7 @@ function cleDe(headers: any, id: IdOrateur): string {
 const COMPATIBLES_OPENAI: Partial<Record<IdOrateur, string>> = {
   deepseek: "https://api.deepseek.com/chat/completions",
   mistral: "https://api.mistral.ai/v1/chat/completions",
-  grok: "https://api.x.ai/v1/chat/completions",
+  llama: "https://api.groq.com/openai/v1/chat/completions", // Llama de Meta servi par Groq (clé gratuite)
 };
 
 // ─── Choix automatique du modèle ────────────────────────────────────────────
@@ -406,7 +406,7 @@ const MODELES_DEPART: Record<IdOrateur, string[]> = {
   claude: ["claude-haiku-5-5"],
   chatgpt: ["gpt-6-luna"],
   deepseek: ["deepseek-chat"],
-  grok: ["grok-4.3"],
+  llama: ["llama-3.3-70b-versatile"],
 };
 
 const MEMO_MODELES = "iadebat_modeles_auto";
@@ -504,7 +504,7 @@ async function listerModeles(id: IdOrateur, cle: string): Promise<string[]> {
     chatgpt: "https://api.openai.com/v1/models",
     mistral: "https://api.mistral.ai/v1/models",
     deepseek: "https://api.deepseek.com/models",
-    grok: "https://api.x.ai/v1/models",
+    llama: "https://api.groq.com/openai/v1/models",
   };
   const d: any = await lire(adresses[id]!, bearer);
   let liste: { id: string; created?: number }[] = (d?.data || [])
@@ -517,15 +517,15 @@ async function listerModeles(id: IdOrateur, cle: string): Promise<string[]> {
   }
   if (id === "mistral") return classer(liste, [/^mistral-large-latest$/, /^mistral-medium-latest$/, /-latest$/, /large/, /medium/, /small/]);
   if (id === "deepseek") return classer(liste, [/^deepseek-chat$/, /chat/, /./]);
-  // Grok
-  liste = liste.filter((m) => /grok/.test(m.id));
-  return classer(liste, [/latest$/, /fast/, /./]);
+  // Llama (Groq)
+  liste = liste.filter((m) => /llama/i.test(m.id) && !/guard|prompt-guard/i.test(m.id));
+  return classer(liste, [/llama-4-scout/i, /llama-3\.3-70b/i, /70b/i, /./]);
 }
 
 const MESSAGE_SOLDE_VIDE =
   "Clé valide, mais solde API à 0 € (des crédits prépayés sont requis sur la plateforme développeur, indépendamment d'un abonnement Plus/Pro).";
 
-/** La clé est bonne mais le compte développeur n'a pas de crédit (OpenAI, Anthropic, DeepSeek, xAI, Mistral). */
+/** La clé est bonne mais le compte développeur n'a pas de crédit (OpenAI, Anthropic, DeepSeek, Mistral, Groq). */
 function soldeVide(statut: number, texte: string): boolean {
   const t = texte.toLowerCase();
   return (
@@ -677,7 +677,7 @@ async function appelerIA(
 //   x-iadebat-sujet              sujet du débat en cours (un « débat gratuit » = un sujet)
 
 const OR_PREFIXES: Record<IdOrateur, string> = {
-  chatgpt: "openai/", claude: "anthropic/", gemini: "google/", deepseek: "deepseek/", mistral: "mistralai/", grok: "x-ai/",
+  chatgpt: "openai/", claude: "anthropic/", gemini: "google/", deepseek: "deepseek/", mistral: "mistralai/", llama: "meta-llama/",
 };
 const OR_GAMMES: Record<IdOrateur, RegExp[]> = {
   chatgpt: [/-mini/, /^openai\/gpt-[0-9.]+$/, /./],
@@ -685,9 +685,9 @@ const OR_GAMMES: Record<IdOrateur, RegExp[]> = {
   gemini: [/flash(?!-lite)/, /flash-lite/, /./],
   deepseek: [/deepseek-chat/, /v[0-9]/, /./],
   mistral: [/mistral-small/, /mistral-medium/, /./],
-  grok: [/fast|mini/, /./],
+  llama: [/llama-4-scout/, /llama-3\.3-70b/, /70b/, /./],
 };
-const OR_EXCLUS = /(:extended|:beta|:thinking|:online|image|vision|audio|search|online|guard|embed|tts|realtime|preview|exp-|codex|oss|gemma|codestral|devstral|pixtral|distill|prover|nano|deep-research)/i;
+const OR_EXCLUS = /(:batch|:extended|:beta|:thinking|:online|omni|image|vision|audio|search|online|guard|embed|tts|realtime|preview|exp-|codex|oss|gemma|codestral|devstral|pixtral|distill|prover|nano|deep-research)/i;
 const OR_PRIX_MAX_ENTREE = 0.000003;
 const OR_PRIX_MAX_SORTIE = 0.000015;
 
@@ -734,6 +734,8 @@ async function appelerOpenRouterVisiteur(
       const l = await modelesOpenRouter(autre, true);
       if (l.length) { liste = l.slice(0, 2); break; }
     }
+    // Aucun modèle gratuit chez nos 6 fournisseurs : routeur gratuit d'OpenRouter (la réplique dira lequel a écrit).
+    if (liste.length === 0) liste = ["openrouter/free"];
   }
   if (liste.length === 0) throw new Error(`OpenRouter : aucun modèle ${CLES_IA[id].nom}${gratuits ? " gratuit" : ""} disponible.`);
   let derniere = "";
@@ -931,7 +933,7 @@ function identifyAgent(systemPrompt: string): IdOrateur {
   if (promptLower.includes("gemini")) return "gemini";
   if (promptLower.includes("deepseek")) return "deepseek";
   if (promptLower.includes("mistral")) return "mistral";
-  if (promptLower.includes("grok")) return "grok";
+  if (promptLower.includes("llama")) return "llama";
   return "chatgpt";
 }
 

@@ -47,7 +47,7 @@ const FIGHTERS = [
   { id: "gemini", name: "Gemini", role: "L'Esprit Multimodal", color: "#3b82f6", symbol: "✦" },
   { id: "deepseek", name: "DeepSeek", role: "Le Logicien d'Élite", color: "#0a59f7", symbol: "🐳" },
   { id: "mistral", name: "Mistral", role: "L'Innovateur Souverain", color: "#ff5400", symbol: "⬘" },
-  { id: "grok", name: "Grok", role: "Le Provocateur Lucide", color: "#ffffff", symbol: "𝕏" },
+  { id: "llama", name: "Llama", role: "Le Pragmatique Open-Source", color: "#0668E1", symbol: "∞" },
   { id: "user", name: "Vous (Humain)", role: "Le Citoyen Rebelle", color: "#60a5fa", symbol: "👤" },
 ];
 
@@ -96,7 +96,7 @@ export function DuelArenaModal({
   getHeaders,
 }: DuelArenaModalProps) {
   const [fighter1, setFighter1] = useState("claude");
-  const [fighter2, setFighter2] = useState("grok");
+  const [fighter2, setFighter2] = useState("llama");
   const [duelRound, setDuelRound] = useState(1);
   const [maxRounds, setMaxRounds] = useState(3);
   const [duelMessages, setDuelMessages] = useState<DuelMessage[]>([]);

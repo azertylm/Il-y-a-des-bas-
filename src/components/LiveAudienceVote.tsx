@@ -15,7 +15,7 @@ export function LiveAudienceVote({ activeAgents, onCheerAll, onHide }: LiveAudie
     gemini: 0,
     deepseek: 0,
     mistral: 0,
-    grok: 0,
+    llama: 0,
     user: 0,
   });
 
