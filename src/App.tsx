@@ -1,6 +1,6 @@
 import * as React from "react";
 import { useContextualFeedback } from "./labo-avis/useContextualFeedback";
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { 
   Play, 
   Pause, 
@@ -57,6 +57,9 @@ import {
   Share2,
   FileCode,
   Bot,
+  Image as ImageIcon,
+  Headphones,
+  Megaphone,
 } from "lucide-react";
 
 import { FallacyInspector } from "./components/FallacyInspector";
@@ -83,6 +86,7 @@ import {
   ALPHABETTE_FOOTER_TEXT
 } from "./utils/alphabetteAuth";
 import { checkAndUpdateQuota, QuotaStatus } from "./utils/alphabetteQuota";
+import { FORMATS_DEBAT, FormatDebat, consigneFormat, CONSIGNE_PLATEAU_TV, sujetsDuJour, dessinerPunchline, partagerImage, podcastDisponible, lireAVoixHaute } from "./utils/scene";
 import { lireCleOpenRouter, enregistrerCleOpenRouter, lireGratuitsOpenRouter, enregistrerGratuitsOpenRouter, terminerConnexionOpenRouter, lireEtatDecouverte, EtatDecouverte } from "./utils/openrouter";
 import { lireMembre, lienInscription } from "./utils/membreAlphabette";
 
@@ -390,6 +394,23 @@ export default function AIDebate() {
   useEffect(() => {
     try { localStorage.removeItem("debate_api_models"); } catch { /* rien */ }
   }, []);
+
+  // ── Mise en scène : format du débat, interpellation, image à partager, podcast, affichage mot par mot ──
+  const [formatDebat, setFormatDebat] = useState<FormatDebat>(() => {
+    try { const f = localStorage.getItem("iadebat_format"); if (f === "libre" || f === "pourcontre" || f === "roles") return f; } catch {}
+    return "libre";
+  });
+  const choisirFormat = (f: FormatDebat) => { setFormatDebat(f); try { localStorage.setItem("iadebat_format", f); } catch {} };
+  const [cibleInterpellation, setCibleInterpellation] = useState<string>("");
+  const interpellationRef = useRef<string>("");
+  const [dernierAnime, setDernierAnime] = useState<string>("");
+  const [lancementDemande, setLancementDemande] = useState(false);
+  const sujetsRapides = useMemo(() => sujetsDuJour(), []);
+  // Mode Podcast : lecture à voix haute, réplique après réplique (voix du navigateur, rien n'est envoyé).
+  const [podcast, setPodcast] = useState<"arret" | "lecture" | "pause">("arret");
+  const [podcastIndex, setPodcastIndex] = useState(0);
+  const podcastOccupe = useRef(false);
+  const podcastJeton = useRef(0);
 
   // ── Accès aux IA sans configuration : Mode Découverte (site) et connexion OpenRouter 1 clic ──
   const [cleOpenRouter, setCleOpenRouter] = useState<string>(() => lireCleOpenRouter());
@@ -1080,8 +1101,12 @@ export default function AIDebate() {
             "grok": "Badge"
           },
           "critiqueGénérale": "Analyse d'ensemble socratique de 3-4 lignes sur les forces croisées.",
-          "keyCitation": "Citation mémorable textuelle ou inspirée d'un des participants"
-        }`;
+          "keyCitation": "Citation mémorable textuelle ou inspirée d'un des participants",
+          "accords": ["Premier vrai point d'accord entre les participants (une phrase)", "Deuxième point d'accord (une phrase)"],
+          "blocage": "Le vrai point de blocage qui les sépare encore (une ou deux phrases)",
+          "meilleurArgument": { "agentId": "id de l'IA qui l'a avancé", "texte": "L'argument le plus solide de la session, reformulé en une ou deux phrases" }
+        }
+        Pour « accords », « blocage » et « meilleurArgument », appuie-toi uniquement sur ce qui a vraiment été dit dans la transcription.`;
 
         // Lazy loads Gemini client on backend to build Jury Verdict
         const juryRes = await fetch("/api/debate/generate", {
@@ -1218,11 +1243,19 @@ export default function AIDebate() {
       time: new Date().toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" }),
       isUser: true,
       claps: 0,
+      ...(cibleInterpellation ? { cible: cibleInterpellation, etiquette: `→ ${AGENTS.find(a => a.id === cibleInterpellation)?.name ?? ""}` } : {}),
     };
 
+    messagesRef.current = [...messagesRef.current, userMsg];
     setMessages(prev => [...prev, userMsg]);
     setUserContribution("");
     setIsSubmittingUserContribution(false);
+    const cible = AGENTS.find(a => a.id === cibleInterpellation);
+    setCibleInterpellation("");
+    if (cible) {
+      if (phase === "running") interpellationRef.current = cible.id; // elle parle juste après l'IA en cours
+      else { runAgents([cible]); return; }
+    }
 
     // Si on est en train de tourner, on permet aux IA suivantes de réagir immédiatement
     if (phase === "paused" || phase === "idle") {
@@ -1253,8 +1286,17 @@ export default function AIDebate() {
       return;
     }
 
+    // Rang stable de chaque IA (camp ou rôle) : ordre des IA actives, pas l'ordre de parole tiré au sort.
+    const rangsFormat = AGENTS.filter(a => activeAgentsFlags[a.id]).map(a => a.id);
     for (let i = 0; i < activeAgents.length; i++) {
       if (stopRequested.current) break;
+      // L'animateur a interpellé une IA : elle prend la parole tout de suite.
+      const cibleId = interpellationRef.current;
+      if (cibleId) {
+        interpellationRef.current = "";
+        const cible = agentList.find(a => a.id === cibleId) || AGENTS.find(a => a.id === cibleId);
+        if (cible && activeAgents[i]?.id !== cibleId) activeAgents.splice(i, 0, cible);
+      }
       const agent = activeAgents[i];
       const nextAgent = i < activeAgents.length - 1 ? activeAgents[i + 1] : undefined;
       
@@ -1270,8 +1312,18 @@ export default function AIDebate() {
       let enhancedPrompt = solo
         ? `Tu es « Voix ${indexVoix + 1} », un participant d'une table ronde entre intelligences artificielles. L'organisateur du débat t'a confié cette posture : ${posture}. Défends-la avec conviction et honnêteté tout au long du débat, sans jamais te présenter comme une autre IA.`
         : agent.systemPrompt;
+      // Format choisi par l'utilisateur (Pour vs Contre, Rôles tranchés) : il prime sur la liberté d'opinion.
+      const format = !solo ? consigneFormat(formatDebat, Math.max(0, rangsFormat.indexOf(agent.id)), activeTopic.title) : { consigne: "", etiquette: "" };
+      if (format.consigne) enhancedPrompt += ` L'organisateur a choisi le format du débat ; cette consigne prime sur ta liberté d'opinion. ${format.consigne}`;
+      // L'animateur vient d'intervenir : on lui répond.
+      const derniere = messagesRef.current[messagesRef.current.length - 1];
+      if (derniere?.isUser) {
+        enhancedPrompt += derniere.cible === agent.id
+          ? ` L'ANIMATEUR T'INTERPELLE DIRECTEMENT : « ${derniere.content.slice(0, 500)} ». Réponds-lui d'abord, franchement, puis reviens au débat.`
+          : ` L'animateur vient d'intervenir (« ${derniere.content.slice(0, 300)} ») : tiens-en compte.`;
+      }
       if (isTurboSpeed || speechLength === "court") {
-        enhancedPrompt += " Fais une intervention concise, tranchante et percutante en moins de 90 mots. Pas de préambule.";
+        enhancedPrompt += CONSIGNE_PLATEAU_TV;
       } else if (debateTone === "incisif") {
         enhancedPrompt += " Le débat est rude, n'hésite pas à ébranler tes confrères et à déceler des failles de logique dans leurs positions de façon vive et combative.";
       } else if (debateTone === "constructif") {
@@ -1339,7 +1391,9 @@ export default function AIDebate() {
           claps: 0,
           ecritPar,
           relais,
+          ...(format.etiquette ? { etiquette: format.etiquette } : {}),
         };
+        setDernierAnime(msg.id);
 
         setMessages(prev => {
           const updated = [...prev, msg];
@@ -1386,7 +1440,7 @@ export default function AIDebate() {
     
     setRoundCount(n => n + 1);
     setPhase("paused");
-  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength, isTurboSpeed, getHeaders, getHeadersCleUnique, waitForReading, accesIA, alphabetteAccount, rafraichirDecouverte]);
+  }, [buildContext, activeTopic, activeAgentsFlags, debateTone, speechLength, isTurboSpeed, getHeaders, getHeadersCleUnique, waitForReading, accesIA, alphabetteAccount, rafraichirDecouverte, formatDebat]);
 
   // Sélectionne les agents actifs en désignant un premier orateur aléatoire (jamais forcé sur ChatGPT)
   const getRandomizedActiveAgents = useCallback((avoidFirstId?: string | null) => {
@@ -1408,6 +1462,18 @@ export default function AIDebate() {
   }, [activeAgentsFlags]);
 
   // Contrôleurs interactifs principaux
+  /** Sujet en 1 clic : on choisit le sujet puis on lance dès que l'écran l'a pris en compte. */
+  const lancerSujetRapide = (t: Topic) => {
+    handleSelectTopic(t);
+    setLancementDemande(true);
+  };
+  useEffect(() => {
+    if (lancementDemande && phase === "idle" && messages.length === 0) {
+      setLancementDemande(false);
+      handleStart();
+    }
+  });
+
   const handleStart = () => {
     soloRef.current = null;
     setSoloActif(false);
@@ -1572,6 +1638,42 @@ export default function AIDebate() {
   }, [messages.length, displayMode]);
 
   const isClosed = phase === "closed" || phase === "closing";
+  useEffect(() => {
+    if (podcast !== "lecture" || podcastOccupe.current || podcastIndex >= messages.length) return;
+    const m = messages[podcastIndex];
+    podcastOccupe.current = true;
+    const jeton = podcastJeton.current;
+    lireAVoixHaute(m.content, m.isUser ? "user" : m.agentId, m.isUser ? "L'animateur" : m.agentName).then(() => {
+      podcastOccupe.current = false;
+      if (jeton === podcastJeton.current) setPodcastIndex(i => i + 1);
+    });
+  }, [podcast, podcastIndex, messages]);
+  useEffect(() => () => { try { window.speechSynthesis?.cancel(); } catch {} }, []);
+  const basculerPodcast = () => {
+    const s = window.speechSynthesis;
+    if (podcast === "arret") {
+      podcastJeton.current++;
+      podcastOccupe.current = false;
+      s.cancel();
+      // On commence à la réplique la plus récente (ou au début si le débat vient de démarrer).
+      setPodcastIndex(messages.length <= 2 ? 0 : Math.max(0, messages.length - 1));
+      setPodcast("lecture");
+    } else if (podcast === "lecture") { s.pause(); setPodcast("pause"); }
+    else { s.resume(); setPodcast("lecture"); }
+  };
+  const arreterPodcast = () => {
+    podcastJeton.current++;
+    podcastOccupe.current = false;
+    try { window.speechSynthesis.cancel(); } catch {}
+    setPodcast("arret");
+  };
+
+  /** Points donnés par le public (« Soutenir ») à chaque IA, du plus au moins soutenu. */
+  const scoresPublic = useMemo(() => {
+    const t: Record<string, number> = {};
+    for (const m of messages) if (!m.isUser && m.claps) t[m.agentId] = (t[m.agentId] || 0) + m.claps;
+    return Object.entries(t).map(([id, points]) => ({ id, points })).sort((a, b) => b.points - a.points);
+  }, [messages]);
   const selectedThemeTitle = activeTopic.title;
 
   return (
@@ -2598,6 +2700,54 @@ export default function AIDebate() {
                       </div>
                     )}
 
+                    {phase === "idle" && messages.length === 0 && (
+                      <div className="mt-4 space-y-4">
+                        {/* FORMAT DU DÉBAT */}
+                        <div>
+                          <p className="text-center text-[11px] sm:text-xs font-bold uppercase tracking-[0.18em] text-gray-400 mb-2">Format du débat</p>
+                          <div role="radiogroup" aria-label="Format du débat" className="grid grid-cols-3 gap-1.5 max-w-xl mx-auto">
+                            {FORMATS_DEBAT.map(f => (
+                              <button
+                                key={f.id}
+                                role="radio"
+                                aria-checked={formatDebat === f.id}
+                                onClick={() => choisirFormat(f.id)}
+                                title={f.aide}
+                                className={`min-h-[48px] rounded-xl border px-2 py-1.5 text-xs sm:text-sm font-bold leading-tight cursor-pointer transition-all ${
+                                  formatDebat === f.id
+                                    ? "border-[#00f5c4] bg-[#00f5c4]/15 text-[#00f5c4]"
+                                    : "border-white/15 bg-white/[0.03] text-gray-300 hover:text-white hover:border-white/30"
+                                }`}
+                              >
+                                {f.nom}
+                              </button>
+                            ))}
+                          </div>
+                          <p className="text-center text-[11px] sm:text-xs text-gray-400 mt-1.5">{FORMATS_DEBAT.find(f => f.id === formatDebat)?.aide} Répliques courtes, façon plateau télé.</p>
+                        </div>
+
+                        {/* SUJETS EN 1 CLIC */}
+                        <div>
+                          <p className="text-center text-[11px] sm:text-xs font-bold uppercase tracking-[0.18em] text-gray-400 mb-2">Ou lancez un sujet en 1 clic</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                            {sujetsRapides.map(t => (
+                              <button
+                                key={t.id}
+                                onClick={() => lancerSujetRapide(t)}
+                                className="min-h-[56px] text-left rounded-xl border border-white/10 bg-[#0d0d12] hover:border-[#00f5c4]/50 hover:bg-[#00f5c4]/[0.06] px-3 py-2 cursor-pointer transition-all flex items-start gap-2.5"
+                              >
+                                <span className="text-xl leading-none mt-0.5" aria-hidden="true">{t.emoji}</span>
+                                <span className="min-w-0">
+                                  <span className="block text-[10px] font-bold uppercase tracking-wider text-[#00f5c4]">{t.category}</span>
+                                  <span className="block text-sm font-bold text-white leading-snug">{t.title}</span>
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
                     {isSoloPanelOpen && phase === "idle" && (
                       <div className="mt-4 rounded-xl border border-[#b07aff]/40 bg-[#b07aff]/[0.06] p-3 sm:p-4 text-left space-y-3">
                         <div>
@@ -2879,6 +3029,7 @@ export default function AIDebate() {
                         getHeaders={getHeaders}
                         fontSizeLevel={fontSizeLevel}
                         onClap={() => handleClapMessage(msg.id)} 
+                        anime={msg.id === dernierAnime}
                       />
                     </div>
                   ))}
@@ -2943,7 +3094,7 @@ export default function AIDebate() {
 
                   {/* Affichage du Verdict détaillé de la Cour Éthique */}
                   {verdict && (
-                    <VerdictDisplay widgetVerdict={verdict} onShare={handleOpenShareActiveDebate} />
+                    <VerdictDisplay widgetVerdict={verdict} onShare={handleOpenShareActiveDebate} sujet={activeTopic.title} scoresPublic={scoresPublic} />
                   )}
 
                   {/* Synthèse textuelle */}
@@ -3035,9 +3186,19 @@ export default function AIDebate() {
                     <div className="w-6 h-6 rounded-full bg-blue-500/10 border border-blue-500/25 flex items-center justify-center text-[11px] shrink-0 select-none">
                       👤
                     </div>
+                    <select
+                      value={cibleInterpellation}
+                      onChange={e => setCibleInterpellation(e.target.value)}
+                      aria-label="À qui vous adressez-vous ?"
+                      title="Interpeller une IA précise : elle vous répond juste après"
+                      className="shrink-0 max-w-[96px] sm:max-w-none bg-black border border-white/15 rounded-lg px-1.5 py-1 text-xs text-gray-200 focus:outline-none focus:border-blue-500 cursor-pointer"
+                    >
+                      <option value="">À tous</option>
+                      {AGENTS.filter(a => activeAgentsFlags[a.id]).map(a => <option key={a.id} value={a.id}>→ {a.name}</option>)}
+                    </select>
                     <input 
                       type="text" 
-                      placeholder="Participez au débat avec vos arguments (Entrée pour envoyer)..."
+                      placeholder={cibleInterpellation ? `Votre question à ${AGENTS.find(a => a.id === cibleInterpellation)?.name}…` : "Recentrez, posez une question piège… (Entrée)"}
                       value={userContribution}
                       onChange={e => setUserContribution(e.target.value)}
                       className="flex-1 min-w-0 bg-black border border-white/10 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-blue-500 placeholder-gray-500"
@@ -3058,6 +3219,39 @@ export default function AIDebate() {
               <div className="border border-white/[0.08] p-1 px-1.5 bg-[#0a0a0d]/95 backdrop-blur-md rounded-lg flex items-center justify-between gap-1.5 flex-wrap shrink-0 shadow-lg">
                 
                 <div className="flex flex-wrap items-center gap-2">
+
+                  {/* MODE PODCAST */}
+                  {podcastDisponible() && messages.length > 0 && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={basculerPodcast}
+                        aria-pressed={podcast !== "arret"}
+                        title="Écouter le débat à voix haute (voix de votre navigateur, une voix par IA)"
+                        className={`min-h-[36px] flex items-center gap-1.5 px-2.5 rounded-lg border text-xs font-bold uppercase tracking-wider cursor-pointer transition-all ${
+                          podcast === "arret" ? "border-white/15 bg-white/[0.04] text-gray-200 hover:bg-white/[0.1]" : "border-violet-400/60 bg-violet-500/15 text-violet-200"
+                        }`}
+                      >
+                        {podcast === "lecture" ? <Pause className="w-3.5 h-3.5" /> : <Headphones className="w-3.5 h-3.5" />}
+                        <span>{podcast === "arret" ? "Écouter" : podcast === "lecture" ? "Pause" : "Reprendre"}</span>
+                      </button>
+                      {podcast !== "arret" && (
+                        <button onClick={arreterPodcast} title="Arrêter la lecture" aria-label="Arrêter la lecture" className="min-h-[36px] px-2 rounded-lg border border-white/15 bg-white/[0.04] text-gray-300 hover:text-white cursor-pointer">
+                          <Square className="w-3 h-3 fill-current" />
+                        </button>
+                      )}
+                    </div>
+                  )}
+
+                  {/* SCORE DU PUBLIC */}
+                  {scoresPublic.length > 0 && (
+                    <div className="flex items-center gap-1 text-[11px] font-bold" title="Vos « Soutenir » sur les répliques">
+                      <span className="text-yellow-400">👍</span>
+                      {scoresPublic.slice(0, 3).map(sc => {
+                        const ag = AGENTS.find(a => a.id === sc.id);
+                        return <span key={sc.id} className="px-1.5 py-0.5 rounded bg-white/[0.05]" style={{ color: ag?.color }}>{ag?.name ?? sc.id} {sc.points}</span>;
+                      })}
+                    </div>
+                  )}
 
                   {phase === "running" && (
                     <button 
@@ -3083,7 +3277,7 @@ export default function AIDebate() {
                         className="flex items-center gap-2 bg-red-500/15 hover:bg-red-500/25 text-red-200 border border-red-500/30 font-bold text-xs sm:text-sm px-3.5 py-1.5 rounded-lg transition-all cursor-pointer uppercase tracking-wider"
                       >
                         <Square className="w-3.5 h-3.5 fill-current" />
-                        <span>Verdict</span>
+                        <span>Clore et synthétiser</span>
                       </button>
                     </>
                   )}
@@ -3186,7 +3380,7 @@ export default function AIDebate() {
 
                 {/* Verdict détaillé d'archive si présent */}
                 {selectedArchive.verdict && (
-                  <VerdictDisplay widgetVerdict={selectedArchive.verdict} onShare={() => handleOpenShareArchive(selectedArchive)} />
+                  <VerdictDisplay widgetVerdict={selectedArchive.verdict} onShare={() => handleOpenShareArchive(selectedArchive)} sujet={selectedArchive.topic?.title || ""} />
                 )}
 
                 {/* Synthèse finale d'archive */}
@@ -3510,6 +3704,7 @@ function MessageBubble({
   topicTitle = "",
   getHeaders,
   fontSizeLevel = "normal",
+  anime = false,
 }: { 
   msg: Message; 
   onClap?: () => void; 
@@ -3517,10 +3712,47 @@ function MessageBubble({
   getHeaders?: () => Record<string, string>;
   key?: string | number;
   fontSizeLevel?: "normal" | "large" | "xlarge";
+  /** Nouvelle réplique : affichage mot par mot. */
+  anime?: boolean;
 }) {
   const [expanded, setExpanded] = useState(true);
   const isLong = msg.content.length > 550;
-  const textToShow = !expanded ? msg.content.slice(0, 400) + "…" : msg.content;
+
+  // Affichage mot par mot de la nouvelle réplique (un clic affiche tout ; rien si l'utilisateur réduit les animations).
+  const morceaux = useMemo(() => msg.content.split(/(\s+)/), [msg.content]);
+  const sansAnimation = typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  const [visibles, setVisibles] = useState(anime && !sansAnimation ? 0 : morceaux.length);
+  useEffect(() => {
+    if (!anime || sansAnimation) { setVisibles(morceaux.length); return; }
+    let n = 0;
+    const id = setInterval(() => {
+      n += 2;
+      setVisibles(n);
+      if (n >= morceaux.length) clearInterval(id);
+    }, 35);
+    return () => clearInterval(id);
+  }, [anime, morceaux.length, sansAnimation]);
+  const enEcriture = visibles < morceaux.length;
+  const contenu = enEcriture ? morceaux.slice(0, visibles).join("") : msg.content;
+  const textToShow = !expanded && !enEcriture ? msg.content.slice(0, 400) + "…" : contenu;
+
+  const [imageEnCours, setImageEnCours] = useState(false);
+  const partagerReplique = async () => {
+    setImageEnCours(true);
+    try {
+      const image = await dessinerPunchline({
+        citation: msg.content,
+        auteur: msg.isUser ? "L'animateur" : msg.agentName,
+        symbole: msg.isUser ? "👤" : msg.agentSymbol,
+        couleur: msg.agentColor,
+        sujet: topicTitle,
+        sousTitre: msg.etiquette || (msg.relais && msg.ecritPar ? `écrit par ${msg.ecritPar.split(" · ")[0]}` : msg.agentRole),
+      });
+      await partagerImage(image, `iadebat-${msg.agentId}.png`, `${topicTitle} — IADébat`);
+    } finally {
+      setImageEnCours(false);
+    }
+  };
 
   const contentFontClass = fontSizeLevel === "xlarge" 
     ? "text-base sm:text-lg md:text-xl leading-relaxed text-gray-100" 
@@ -3560,6 +3792,11 @@ function MessageBubble({
               {msg.relais ? `écrit par ${msg.ecritPar}, à la manière de ${msg.agentName}` : `écrit par ${msg.ecritPar}`}
             </span>
           )}
+          {msg.etiquette && (
+            <span className="text-[10px] font-extrabold uppercase tracking-wider px-1.5 py-0.5 rounded border shrink-0" style={{ color: msg.agentColor, borderColor: `${msg.agentColor}66` }}>
+              {msg.etiquette}
+            </span>
+          )}
           <span className="text-[10px] text-gray-400 font-medium tracking-normal truncate">
             {msg.agentRole}
           </span>
@@ -3572,7 +3809,14 @@ function MessageBubble({
           className="bg-[#0b0b0e] border border-white/[0.08] rounded-lg px-2.5 py-1.5 relative flex flex-col justify-between shadow-sm" 
           style={{ borderLeft: `3px solid ${msg.agentColor}` }}
         >
-          <p className={`font-sans whitespace-pre-wrap select-text ${contentFontClass}`}>{textToShow}</p>
+          <p
+            className={`font-sans whitespace-pre-wrap select-text ${contentFontClass}`}
+            onClick={enEcriture ? () => setVisibles(morceaux.length) : undefined}
+            aria-busy={enEcriture}
+          >
+            {textToShow}
+            {enEcriture && <span className="inline-block w-1.5 h-3.5 ml-0.5 align-middle bg-current opacity-60 animate-pulse" aria-hidden="true" />}
+          </p>
           
           <div className="flex flex-wrap items-center justify-between gap-2 mt-2 border-t border-white/[0.06] pt-2">
             {isLong ? (
@@ -3585,9 +3829,18 @@ function MessageBubble({
               </button>
             ) : <span />}
 
+            <button
+              onClick={partagerReplique}
+              disabled={imageEnCours || enEcriture}
+              title="Créer une image carrée de cette réplique, à partager ou télécharger"
+              className="bg-white/[0.06] hover:bg-white/[0.12] text-gray-300 hover:text-white border border-white/[0.08] rounded-lg px-2.5 py-1 text-xs font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1.5 transition-all select-none ml-auto disabled:opacity-40"
+            >
+              <ImageIcon className="w-3 h-3" />
+              <span>{imageEnCours ? "…" : "Image"}</span>
+            </button>
             <button 
               onClick={onClap}
-              className="bg-white/[0.06] hover:bg-white/[0.12] text-gray-300 hover:text-yellow-300 border border-white/[0.08] rounded-lg px-2.5 py-1 text-xs font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1.5 transition-all select-none ml-auto"
+              className="bg-white/[0.06] hover:bg-white/[0.12] text-gray-300 hover:text-yellow-300 border border-white/[0.08] rounded-lg px-2.5 py-1 text-xs font-bold uppercase tracking-wider cursor-pointer flex items-center gap-1.5 transition-all select-none"
             >
               <ThumbsUp className="w-3 h-3 fill-current text-yellow-400" />
               <span>Soutenir {msg.claps ? `(${msg.claps})` : ""}</span>
@@ -3719,11 +3972,30 @@ function SummaryWidget({
 // ─── COMPONENT: JURY VERDICT DISPLAY ──────────────────────────────────────────
 function VerdictDisplay({ 
   widgetVerdict,
-  onShare
+  onShare,
+  sujet = "",
+  scoresPublic,
 }: { 
   widgetVerdict: Verdict;
   onShare?: () => void;
+  sujet?: string;
+  scoresPublic?: { id: string; points: number }[];
 }) {
+  const partagerCarteJuge = async () => {
+    const m = widgetVerdict.meilleurArgument;
+    const ag = AGENTS.find(a => a.id === m?.agentId);
+    const texte = m?.texte || widgetVerdict.blocage || widgetVerdict.keyCitation || "";
+    if (!texte) return;
+    const image = await dessinerPunchline({
+      citation: texte,
+      auteur: ag ? ag.name : "Le Juge",
+      symbole: ag ? ag.symbol : "⚖",
+      couleur: ag ? ag.color : "#00f5c4",
+      sujet,
+      sousTitre: m?.texte ? "L'argument le plus solide, selon le Juge" : "Le point de blocage, selon le Juge",
+    });
+    await partagerImage(image, "iadebat-juge.png", `${sujet} — IADébat`);
+  };
   // Traduction propre des id en noms
   const translateAgentName = (id: string) => {
     if (id === "user") return "Humain (Vous)";
@@ -3770,6 +4042,57 @@ function VerdictDisplay({
 
       {/* Contenu du Verdict */}
       <div className="px-5 py-5 flex flex-col gap-4">
+
+        {/* CARTE DU JUGE : accords, blocage, meilleur argument */}
+        {(widgetVerdict.accords?.length || widgetVerdict.blocage || widgetVerdict.meilleurArgument?.texte) && (
+          <div className="rounded-xl border border-[#00f5c4]/30 bg-[#00f5c4]/[0.04] p-4 space-y-3">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs sm:text-sm font-extrabold tracking-widest text-[#00f5c4] font-condensed uppercase">⚖️ La carte du Juge</span>
+              <button
+                onClick={partagerCarteJuge}
+                className="min-h-[40px] flex items-center gap-1.5 px-3 rounded-lg bg-white/[0.06] hover:bg-white/[0.12] border border-white/15 text-gray-100 text-xs font-bold uppercase tracking-wider cursor-pointer"
+              >
+                <ImageIcon className="w-3.5 h-3.5" /> Image
+              </button>
+            </div>
+            {widgetVerdict.accords?.length ? (
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-emerald-300 mb-1">✅ Ils sont d'accord sur</div>
+                <ul className="space-y-1 text-sm text-gray-100 list-disc pl-5">
+                  {widgetVerdict.accords.slice(0, 2).map((a, i) => <li key={i}>{a}</li>)}
+                </ul>
+              </div>
+            ) : null}
+            {widgetVerdict.blocage && (
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-red-300 mb-1">⛔ Le vrai point de blocage</div>
+                <p className="text-sm text-gray-100">{widgetVerdict.blocage}</p>
+              </div>
+            )}
+            {widgetVerdict.meilleurArgument?.texte && (
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-amber-300 mb-1">
+                  🏅 L'argument le plus solide {widgetVerdict.meilleurArgument.agentId ? `— ${translateAgentName(widgetVerdict.meilleurArgument.agentId)}` : ""}
+                </div>
+                <p className="text-sm text-gray-100 italic">« {widgetVerdict.meilleurArgument.texte} »</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* VOTES DU PUBLIC (pouces sur les répliques) */}
+        {scoresPublic && scoresPublic.length > 0 && (
+          <div>
+            <span className="text-[9px] font-extrabold tracking-widest text-gray-500 font-condensed uppercase block mb-2">👍 VOTES DU PUBLIC (VOS « SOUTENIR »)</span>
+            <div className="flex flex-wrap gap-2">
+              {scoresPublic.map(sc => (
+                <span key={sc.id} className="px-2.5 py-1 rounded-lg bg-black/40 border border-white/10 text-sm font-bold" style={{ color: translateAgentColor(sc.id) }}>
+                  {translateAgentName(sc.id)} · {sc.points}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
         
         {/* Le Vainqueur Oratoire */}
         <div className="p-4 bg-amber-500/[0.03] border border-amber-500/10 rounded-lg flex flex-col sm:flex-row gap-4 items-start sm:items-center">

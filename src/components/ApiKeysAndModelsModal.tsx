@@ -587,7 +587,7 @@ export function ApiKeysAndModelsModal({
                   </h3>
                 </div>
                 <p className="text-xs text-gray-200 leading-relaxed">
-                  <strong>Réponse directe à votre question :</strong> Les intelligences artificielles intervenant dans cette arène sont <strong>totalement libres de penser et d'argumenter</strong>. Aucun point de vue ne leur est suggéré, dicté ou pré-orienté.
+                  <strong>Réponse directe à votre question :</strong> Les intelligences artificielles intervenant dans cette arène sont <strong>totalement libres de penser et d'argumenter</strong>. Aucun point de vue ne leur est suggéré, dicté ou pré-orienté — sauf si vous choisissez vous-même le format « Pour vs Contre » ou « Rôles tranchés » (ou le débat IA seul) : chaque réplique affiche alors le camp ou le rôle imposé.
                 </p>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
                   <div className="bg-black/50 border border-white/[0.05] p-3 rounded-lg">

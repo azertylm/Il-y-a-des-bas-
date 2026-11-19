@@ -15,6 +15,10 @@ export interface Message {
   ecritPar?: string;
   /** Vrai si la réplique a été écrite par une autre IA que celle affichée (relais faute de clé). */
   relais?: boolean;
+  /** Camp ou rôle imposé par le format (« Camp POUR », « l'Avocat du diable »), ou IA interpellée. */
+  etiquette?: string;
+  /** Message de l'animateur adressé à une IA précise. */
+  cible?: string;
 }
 
 export interface Topic {
@@ -42,6 +46,10 @@ export interface Verdict {
   agentBadges: { [key: string]: string };
   critiqueGénérale: string;
   keyCitation: string;
+  /** Carte du Juge : 2 points d'accord, le vrai point de blocage, l'argument le plus solide. */
+  accords?: string[];
+  blocage?: string;
+  meilleurArgument?: { agentId: string; texte: string };
   /** IA qui a vraiment rendu ce verdict (« Mistral · mistral-large-latest »). */
   ecritPar?: string;
 }
