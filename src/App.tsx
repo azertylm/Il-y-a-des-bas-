@@ -3391,7 +3391,7 @@ export default function AIDebate() {
 
               {/* BARRE D'ENTRÉE PARTICIPATION DE L'UTILISATEUR HUMAIN */}
               {!isClosed && (
-                <div className="border-t border-white/[0.06] py-0.5 flex items-center gap-1 shrink-0 bg-[#050505] z-10">
+                <div className="@container border-t border-white/[0.06] py-0.5 flex items-center gap-1 shrink-0 bg-[#050505] z-10">
                   <form onSubmit={handlePostUserContribution} className="flex-1 min-w-0 flex gap-1.5 items-center">
                     <div className="w-6 h-6 rounded-full bg-blue-500/10 border border-blue-500/25 flex items-center justify-center text-[11px] shrink-0 select-none">
                       👤
@@ -3416,10 +3416,12 @@ export default function AIDebate() {
                     <button 
                       type="submit"
                       disabled={!userContribution.trim() || isSubmittingUserContribution}
+                      title="Intervenir"
                       className="bg-blue-600 hover:bg-blue-500 border-none font-bold text-xs text-white px-3 py-1 rounded-lg cursor-pointer disabled:opacity-40 flex items-center gap-1 shrink-0 transition-colors"
                     >
-                      <Send className="w-3 h-3" />
-                      <span>{isSubmittingUserContribution ? "..." : "Intervenir"}</span>
+                      <Send className="w-3 h-3" aria-hidden="true" />
+                      {/* Petit écran ou BIG : l'icône seule, le mot reste lu par les lecteurs d'écran */}
+                      <span className="@max-[340px]:sr-only">{isSubmittingUserContribution ? "..." : "Intervenir"}</span>
                     </button>
                   </form>
                 </div>
