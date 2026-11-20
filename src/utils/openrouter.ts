@@ -5,6 +5,8 @@
  *    reste dans CE navigateur et ne sert qu'à appeler openrouter.ai.
  */
 
+import { enregistrerSolde, jetonsPremium } from "./passAlphabette";
+
 const CLE = "iadebat_openrouter_key";
 const GRATUITS = "iadebat_openrouter_gratuits";
 const VERIFICATEUR = "iadebat_openrouter_verifier";
@@ -76,10 +78,20 @@ export interface EtatDecouverte {
   actif: boolean;
   quota: number;
   debats_restants: number;
+  /** Offre de lancement : tout Alphabette est gratuit jusqu'à cette date incluse (AAAA-MM-JJ), sinon null. */
+  gratuit_jusqu_au?: string | null;
   /** Mode Gratuit : débats par jour et restants (modèles « :free »). */
   gratuit?: { quota: number; restants: number };
-  /** Débat Premium offert par jour et restant. */
-  premium?: { quota: number; restants: number };
+  /** Débat Premium offert par jour et restant ; « total » = offert + Pass + crédits achetés. */
+  premium?: {
+    quota: number;
+    restants: number;
+    total?: number;
+    pass?: { offre: string; fin: number; quota: number; restants: number } | null;
+    credits?: number | null;
+    /** Faux si le crédit IA du site est épuisé : Pass et crédits ne servent pas pour l'instant (ils sont conservés). */
+    disponible?: boolean;
+  };
 }
 
 /** Le Mode Découverte du site est-il ouvert, et combien de débats gratuits reste-t-il aujourd'hui ? */
@@ -87,9 +99,15 @@ export async function lireEtatDecouverte(): Promise<EtatDecouverte | null> {
   const h = window.location.hostname;
   const base = h === "alphabette.fr" || h === "alphabette.eu" ? window.location.origin : "https://alphabette.eu";
   try {
-    const r = await fetch(`${base}/api/iadebat-proxy.php?etat&t=${Date.now()}`, { signal: AbortSignal.timeout(8000) });
+    // Pass (Écosystème, IA Débat, Découverte 48 h) et crédits : le relais les vérifie et compte les débats Premium.
+    const { pass, credits } = jetonsPremium();
+    const entetes: Record<string, string> = {};
+    if (pass) entetes["X-Alphabette-Pass"] = pass;
+    if (credits) entetes["X-Alphabette-Credits"] = credits;
+    const r = await fetch(`${base}/api/iadebat-proxy.php?etat&t=${Date.now()}`, { signal: AbortSignal.timeout(8000), headers: entetes });
     if (!r.ok) return null;
     const d = await r.json();
+    if (typeof d?.premium?.credits === "number") enregistrerSolde(d.premium.credits);
     return typeof d?.actif === "boolean" ? d : null;
   } catch {
     return null;

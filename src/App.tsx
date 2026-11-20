@@ -89,6 +89,7 @@ import { checkAndUpdateQuota, QuotaStatus } from "./utils/alphabetteQuota";
 import { FORMATS_DEBAT, FormatDebat, consigneFormat, CONSIGNE_PLATEAU_TV, sujetsDuJour, dessinerPunchline, partagerImage, podcastDisponible, lireAVoixHaute } from "./utils/scene";
 import { connecterOpenRouter, lireCleOpenRouter, enregistrerCleOpenRouter, lireGratuitsOpenRouter, enregistrerGratuitsOpenRouter, terminerConnexionOpenRouter, lireEtatDecouverte, EtatDecouverte } from "./utils/openrouter";
 import { lireMembre, lienInscription } from "./utils/membreAlphabette";
+import { PAGE_CREDITS, PAGE_PASS, decouverteDejaOuverte, decouverteTerminee, lancerDecouverte, passPourIADebat, soldeLocal, tempsRestant } from "./utils/passAlphabette";
 
 // ─── THÈMES TEMPORELS PAR DÉFAUT ─────────────────────────────────────────────
 const DEFAULT_TOPICS: Topic[] = [
@@ -421,6 +422,23 @@ export default function AIDebate() {
   const [etatDecouverte, setEtatDecouverte] = useState<EtatDecouverte | null>(null);
   const [messageOpenRouter, setMessageOpenRouter] = useState<string>("");
   const rafraichirDecouverte = useCallback(() => { lireEtatDecouverte().then(setEtatDecouverte); }, []);
+  // Pass Alphabette (Découverte 48 h, Pass 12 mois) et crédits IA Débat : vérifiés et décomptés par le relais du site.
+  const [passIA, setPassIA] = useState(() => passPourIADebat());
+  const [creditsIA, setCreditsIA] = useState<number | null>(() => soldeLocal());
+  const [messagePass, setMessagePass] = useState("");
+  useEffect(() => {
+    const surCredits = (e: Event) => setCreditsIA(typeof (e as CustomEvent).detail === "number" ? (e as CustomEvent).detail : soldeLocal());
+    window.addEventListener("alphabette-credits", surCredits);
+    const t = window.setInterval(() => setPassIA(passPourIADebat()), 60000);
+    return () => { window.removeEventListener("alphabette-credits", surCredits); window.clearInterval(t); };
+  }, []);
+  const essayerDecouverte = async () => {
+    setMessagePass("Ouverture du Pass Découverte…");
+    const r = await lancerDecouverte();
+    setMessagePass(r.ok ? "✅ Pass Découverte ouvert pour 48 h : bons débats !" : r.message || "");
+    setPassIA(passPourIADebat());
+    rafraichirDecouverte();
+  };
   useEffect(() => {
     rafraichirDecouverte();
     terminerConnexionOpenRouter().then(({ cle, erreur }) => {
@@ -457,8 +475,15 @@ export default function AIDebate() {
   const aDesClesIA = activeKeysCount > 0 || Boolean(alphabetteAccount?.mistralApiKey?.trim());
   /** Au moins un moyen de faire parler les IA : clé perso, connexion OpenRouter ou Mode Découverte ouvert. */
   const premiumOffert = etatDecouverte?.actif ? etatDecouverte.premium?.restants ?? 0 : 0;
+  /** Débats Premium possibles aujourd'hui par le site : offert + Pass + crédits achetés. */
+  const premiumSite = etatDecouverte?.actif ? etatDecouverte.premium?.total ?? premiumOffert : 0;
+  const passDuJour = etatDecouverte?.premium?.disponible === false ? 0 : etatDecouverte?.premium?.pass?.restants ?? 0;
   const accesGratuit = Boolean(cleOpenRouter) || Boolean(etatDecouverte?.actif);
-  const accesPremium = aDesClesIA || Boolean(cleOpenRouter) || premiumOffert > 0;
+  const accesPremium = aDesClesIA || Boolean(cleOpenRouter) || premiumSite > 0;
+  /** Offre de lancement d'Alphabette : rien à payer jusqu'à cette date (« 7 mai 2027 »), pas de crédits proposés. */
+  const gratuitJusquAu = etatDecouverte?.gratuit_jusqu_au
+    ? new Date(`${etatDecouverte.gratuit_jusqu_au}T12:00:00`).toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+    : "";
   /** Le mode choisi peut-il faire parler les IA ? (un débat Premium déjà commencé garde son ticket) */
   const accesIA = modeIA === "gratuit" ? accesGratuit : accesPremium || messages.length > 0;
 
@@ -675,7 +700,7 @@ export default function AIDebate() {
   const [soloActif, setSoloActif] = useState(false);
   /** Clés enregistrées sur cet appareil (une seule servira à toutes les voix). */
   const aUneClePerso = (id: string) => Boolean(id === "mistral" ? apiKeys.mistral || alphabetteAccount?.mistralApiKey : (apiKeys as any)[id]);
-  const viaPlateforme = modeIA === "gratuit" ? (accesGratuit ? "gratuit" : "") : cleOpenRouter ? "OpenRouter" : premiumOffert > 0 ? "Premium offert" : "";
+  const viaPlateforme = modeIA === "gratuit" ? (accesGratuit ? "gratuit" : "") : cleOpenRouter ? "OpenRouter" : premiumOffert > 0 ? "Premium offert" : passDuJour > 0 ? "Pass Alphabette" : premiumSite > 0 ? "crédits IA Débat" : "";
   const clesDisponibles = AGENTS.filter(a => (modeIA === "premium" && aUneClePerso(a.id)) || Boolean(viaPlateforme));
   const cleSolo = clesDisponibles.some(a => a.id === configSolo.cle) ? configSolo.cle : clesDisponibles[0]?.id || "";
   /** En-têtes réduits à la seule clé choisie : aucune autre IA ne peut prendre le relais. */
@@ -2727,12 +2752,40 @@ export default function AIDebate() {
                             </p>
                           ) : accesPremium ? (
                             <p className="text-center text-[11px] sm:text-xs text-violet-200 mt-1.5">
-                              {aDesClesIA ? "Vos clés personnelles" : cleOpenRouter ? "Votre compte OpenRouter" : `${premiumOffert} débat Premium offert aujourd'hui`}
+                              {aDesClesIA ? "Vos clés personnelles" : cleOpenRouter ? "Votre compte OpenRouter" : [
+                                premiumOffert > 0 ? `${premiumOffert} débat Premium offert aujourd'hui` : "",
+                                passDuJour > 0 ? `${passDuJour} débat(s) du Pass aujourd'hui` : "",
+                                creditsIA ? `${creditsIA} crédit(s) IA Débat` : "",
+                              ].filter(Boolean).join(" · ")}
                               {" "}· GPT-5.4 Mini, Claude Haiku, Gemini Flash, Mistral Small, DeepSeek, Llama 4.
+                              {!aDesClesIA && !cleOpenRouter && passIA?.type === "decouverte" && <span className="block text-violet-300/80">⏳ Pass Découverte : {tempsRestant(passIA.fin)} restantes</span>}
+                              {!aDesClesIA && !cleOpenRouter && creditsIA !== null && !gratuitJusquAu && <a href={PAGE_CREDITS} className="block underline underline-offset-2 text-violet-200 hover:text-white">Crédits IA Débat : {creditsIA} · recharger</a>}
                             </p>
                           ) : (
                             <div className="mt-2 max-w-xl mx-auto rounded-xl border border-violet-400/40 bg-violet-500/[0.07] p-3 space-y-2">
                               <p className="text-sm text-gray-100 font-semibold text-center">Débloquer les modèles avancés</p>
+                              {gratuitJusquAu && (
+                                <p className="text-xs sm:text-sm text-[#00f5c4] text-center font-semibold">🎉 Alphabette est gratuit jusqu'au {gratuitJusquAu} : rien à payer.</p>
+                              )}
+                              {decouverteTerminee() && gratuitJusquAu ? (
+                                <p className="text-xs sm:text-sm text-gray-200 text-center">Vos 48 h de découverte sont terminées. Le débat Premium offert revient chaque jour.</p>
+                              ) : decouverteTerminee() ? (
+                                <p className="text-xs sm:text-sm text-gray-200 text-center">
+                                  Vos 48 h de découverte sont terminées. Pour continuer : Pass 15 € (IA Débat) ou 40 € (toutes les applis), <strong>12 mois, aucun renouvellement automatique</strong> —{" "}
+                                  <a href={PAGE_PASS} className="underline underline-offset-2 text-violet-200 hover:text-white">voir les Pass</a>.
+                                </p>
+                              ) : !decouverteDejaOuverte() && (
+                                <button
+                                  onClick={() => { void essayerDecouverte(); }}
+                                  className="w-full min-h-[48px] rounded-xl bg-[#00f5c4] hover:bg-[#00e0b0] text-black font-condensed font-extrabold text-sm uppercase tracking-wider cursor-pointer"
+                                >
+                                  Essayer gratuitement 48 h (sans carte bancaire)
+                                </button>
+                              )}
+                              {messagePass && <p className="text-xs text-center text-gray-200" role="status">{messagePass}</p>}
+                              {etatDecouverte?.premium?.disponible === false && (passIA || creditsIA) ? (
+                                <p className="text-xs text-amber-200 text-center">Premium momentanément indisponible côté site : votre Pass et vos crédits sont conservés.</p>
+                              ) : null}
                               <button
                                 onClick={() => { void connecterOpenRouter(); }}
                                 className="w-full min-h-[48px] rounded-xl bg-violet-400 hover:bg-violet-300 text-black font-condensed font-extrabold text-sm uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer"
@@ -2746,13 +2799,19 @@ export default function AIDebate() {
                                 >
                                   Mes clés API (Mode Expert)
                                 </button>
-                                <button
-                                  disabled
-                                  title="Bientôt : pack de crédits Premium"
-                                  className="min-h-[44px] rounded-xl border border-white/10 bg-white/[0.02] text-xs sm:text-sm font-bold text-gray-500 cursor-not-allowed"
+                                {gratuitJusquAu ? (
+                                <p className="min-h-[44px] rounded-xl border border-white/10 bg-white/[0.02] text-xs sm:text-sm font-bold text-gray-300 flex items-center justify-center text-center px-2">
+                                  Gratuit jusqu'au {gratuitJusquAu}
+                                </p>
+                                ) : (
+                                <a
+                                  href={PAGE_CREDITS}
+                                  title="5 € = 50 débats Premium, sans abonnement"
+                                  className="min-h-[44px] rounded-xl border border-violet-300/40 bg-violet-500/[0.10] hover:bg-violet-500/[0.2] text-xs sm:text-sm font-bold text-violet-100 flex items-center justify-center text-center px-2"
                                 >
-                                  Pack de crédits · bientôt
-                                </button>
+                                  Recharger des crédits IA Débat{creditsIA !== null ? ` (${creditsIA})` : ""}
+                                </a>
+                                )}
                               </div>
                               <p className="text-[11px] text-gray-400 text-center">Le débat Premium offert du jour est utilisé ou indisponible. Le Mode Gratuit reste ouvert.</p>
                             </div>

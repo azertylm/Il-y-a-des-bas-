@@ -4,6 +4,8 @@ import fs from "fs";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { enregistrerSolde, jetonsPremium } from "./src/utils/passAlphabette";
+
 
 dotenv.config();
 
@@ -822,7 +824,9 @@ async function appelerDecouverte(
     if (!divers) {
       ticket = ticketsDecouverte.get(cleTicket) || "";
       if (!ticket) {
-        const d = await postDecouverte({ action: "debut", sujet: sujet.slice(0, 200), mode });
+        // Premium : le relais prend d'abord le débat offert du jour, puis le Pass, puis 1 crédit acheté.
+        const d = await postDecouverte({ action: "debut", sujet: sujet.slice(0, 200), mode, ...(mode === "premium" ? jetonsPremium() : {}) });
+        if (typeof d.data?.credits_restants === "number") enregistrerSolde(d.data.credits_restants);
         if (d.status === 429) throw erreurQuota(d.data?.erreur || "Débats gratuits du jour épuisés.");
         if (d.status !== 200 || !d.data?.ticket) throw new Error(d.data?.erreur || `Mode Découverte indisponible (${d.status}).`);
         ticket = d.data.ticket;
