@@ -63,6 +63,7 @@ import {
 } from "lucide-react";
 
 import { FallacyInspector } from "./components/FallacyInspector";
+import { SyntheseReunion } from "./components/SyntheseReunion";
 import { DuelArenaModal } from "./components/DuelArenaModal";
 import { PhilosophicalRadar2D } from "./components/PhilosophicalRadar2D";
 import { BreakingNewsModal } from "./components/BreakingNewsModal";
@@ -86,7 +87,7 @@ import {
   ALPHABETTE_FOOTER_TEXT
 } from "./utils/alphabetteAuth";
 import { checkAndUpdateQuota, QuotaStatus } from "./utils/alphabetteQuota";
-import { FORMATS_DEBAT, FormatDebat, consigneFormat, CONSIGNE_PLATEAU_TV, sujetsDuJour, dessinerPunchline, partagerImage, podcastDisponible, lireAVoixHaute } from "./utils/scene";
+import { FORMATS_DEBAT, FormatDebat, consigneFormat, CATEGORIE_DIABLE, CONSIGNE_PLATEAU_TV, sujetsDuJour, dessinerPunchline, partagerImage, podcastDisponible, lireAVoixHaute } from "./utils/scene";
 import { connecterOpenRouter, lireCleOpenRouter, enregistrerCleOpenRouter, lireGratuitsOpenRouter, enregistrerGratuitsOpenRouter, terminerConnexionOpenRouter, lireEtatDecouverte, EtatDecouverte } from "./utils/openrouter";
 import { lireMembre, lienInscription } from "./utils/membreAlphabette";
 import { PAGE_CREDITS, PAGE_PASS, decouverteDejaOuverte, decouverteTerminee, lancerDecouverte, passPourIADebat, soldeLocal, tempsRestant } from "./utils/passAlphabette";
@@ -1355,7 +1356,11 @@ export default function AIDebate() {
         ? `Tu es « Voix ${indexVoix + 1} », un participant d'une table ronde entre intelligences artificielles. L'organisateur du débat t'a confié cette posture : ${posture}. Défends-la avec conviction et honnêteté tout au long du débat, sans jamais te présenter comme une autre IA.`
         : agent.systemPrompt;
       // Format choisi par l'utilisateur (Pour vs Contre, Rôles tranchés) : il prime sur la liberté d'opinion.
-      const format = !solo ? consigneFormat(formatDebat, Math.max(0, rangsFormat.indexOf(agent.id)), activeTopic.title) : { consigne: "", etiquette: "" };
+      // Avocat du Diable : le format suit le sujet (projet soumis), sans toucher au format choisi pour les débats.
+      const diable = activeTopic.category === CATEGORIE_DIABLE;
+      const format = !solo
+        ? consigneFormat(diable ? "diable" : formatDebat, Math.max(0, rangsFormat.indexOf(agent.id)), diable ? (activeTopic.description || activeTopic.title) : activeTopic.title)
+        : { consigne: "", etiquette: "" };
       if (format.consigne) enhancedPrompt += ` L'organisateur a choisi le format du débat ; cette consigne prime sur ta liberté d'opinion. ${format.consigne}`;
       // L'animateur vient d'intervenir : on lui répond.
       const derniere = messagesRef.current[messagesRef.current.length - 1];
@@ -1523,6 +1528,21 @@ export default function AIDebate() {
       handleStart();
     }
   });
+
+  /** Avocat du Diable : le projet ou la décision de l'utilisateur, passé au crible par toutes les IA, un angle chacune. */
+  const [panneauDiable, setPanneauDiable] = useState(false);
+  const [ficheReunion, setFicheReunion] = useState(false);
+  const [projetDiable, setProjetDiable] = useState("");
+  const lancerAvocatDuDiable = () => {
+    const texte = projetDiable.trim().replace(/\s+/g, " ");
+    if (texte.length < 15) { setErrorMessage("Décrivez votre projet ou votre décision en une ou deux phrases."); return; }
+    setActiveAgentsFlags((f) => Object.fromEntries(Object.keys(f).map((k) => [k, true])));
+    setPanneauDiable(false);
+    lancerSujetRapide({
+      id: `diable-${Date.now()}`, category: CATEGORIE_DIABLE, isCustom: true,
+      title: texte.length > 110 ? `${texte.slice(0, 107)}…` : texte, description: texte.slice(0, 1500),
+    } as Topic);
+  };
 
   const handleStart = () => {
     soloRef.current = null;
@@ -2855,6 +2875,37 @@ export default function AIDebate() {
 
                     {phase === "idle" && messages.length === 0 && (
                       <div className="mt-4 space-y-4">
+                        {/* AVOCAT DU DIABLE : votre projet passé au crible */}
+                        <div className="max-w-xl mx-auto">
+                          {!panneauDiable ? (
+                            <button
+                              type="button"
+                              onClick={() => setPanneauDiable(true)}
+                              className="w-full min-h-[52px] rounded-xl border border-rose-400/50 bg-rose-500/[0.10] hover:bg-rose-500/[0.18] text-rose-100 font-bold text-sm sm:text-base cursor-pointer flex items-center justify-center gap-2 px-3"
+                            >
+                              😈 Avocat du Diable : soumettre mon projet ou ma décision
+                            </button>
+                          ) : (
+                            <div className="rounded-xl border border-rose-400/50 bg-rose-500/[0.07] p-3 space-y-2">
+                              <label htmlFor="projet-diable" className="block text-sm font-bold text-rose-100">😈 Votre projet ou votre décision</label>
+                              <p className="text-xs text-gray-300">Chaque IA cherche les failles sous un angle différent : argent, mise en œuvre, les gens concernés, règles, concurrence, angles morts.</p>
+                              <textarea
+                                id="projet-diable"
+                                value={projetDiable}
+                                onChange={(e) => setProjetDiable(e.target.value)}
+                                maxLength={1500}
+                                rows={4}
+                                placeholder="Ex. : ouvrir un food-truck de crêpes sur le port de La Grande-Motte, d'avril à octobre, avec 15 000 € d'économies."
+                                className="w-full rounded-lg bg-black/40 border border-white/20 text-sm text-white p-2.5 outline-none focus:border-rose-300"
+                              />
+                              <div className="grid grid-cols-2 gap-2">
+                                <button type="button" onClick={() => setPanneauDiable(false)} className="min-h-[48px] rounded-xl border border-white/20 text-gray-200 text-sm font-bold cursor-pointer">Annuler</button>
+                                <button type="button" onClick={lancerAvocatDuDiable} className="min-h-[48px] rounded-xl bg-rose-400 hover:bg-rose-300 text-black text-sm font-extrabold cursor-pointer">Trouver les failles</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+
                         {/* FORMAT DU DÉBAT */}
                         <div>
                           <p className="text-center text-[11px] sm:text-xs font-bold uppercase tracking-[0.18em] text-gray-400 mb-2">Format du débat</p>
@@ -3265,6 +3316,12 @@ export default function AIDebate() {
                             La table ronde asymétrique a été validée et enregistrée avec succès. Vous pouvez désormais partager ou exporter le résultat complet via un lien unique, par e-mail ou sur vos réseaux.
                           </p>
                           <div className="flex flex-wrap gap-2.5 mt-3">
+                            <button
+                              onClick={() => setFicheReunion(true)}
+                              className="bg-white text-black font-condensed font-extrabold text-[11px] uppercase tracking-wider py-1.5 px-4 min-h-[44px] rounded-lg cursor-pointer transition-all flex items-center gap-1.5"
+                            >
+                              📝 Synthèse de réunion
+                            </button>
                             <button 
                               onClick={handleOpenShareActiveDebate} 
                               className="bg-[#00f5c4] hover:bg-[#00e0b0] text-black font-condensed font-extrabold text-[11px] uppercase tracking-wider py-1.5 px-4 rounded-lg cursor-pointer transition-all flex items-center gap-1.5 shadow-md shadow-[#00f5c4]/20"
@@ -3785,6 +3842,11 @@ export default function AIDebate() {
           setSummary("");
         }}
       />
+
+      {/* SYNTHÈSE DE RÉUNION (fiche à copier ou imprimer) */}
+      {ficheReunion && (
+        <SyntheseReunion topic={activeTopic} messages={messages} headers={getHeaders()} diable={activeTopic.category === CATEGORIE_DIABLE} onClose={() => setFicheReunion(false)} />
+      )}
 
       {/* MODAL DE PARTAGE & D'ENVOI DU RÉSULTAT */}
       {shareDebatePayload && (

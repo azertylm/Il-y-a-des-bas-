@@ -1101,6 +1101,33 @@ A la toute fin de ton texte, ajoute un saut de ligne puis ajoute une phrase uniq
   }
 });
 
+// Synthèse de réunion : fiche Pour / Contre / Angles morts / Conclusion, à copier ou imprimer (dit quelle IA l'a écrite).
+app.post("/api/debate/synthese-reunion", async (req, res) => {
+  const { topicTitle, topicDescription, messages, diable } = req.body || {};
+  if (!Array.isArray(messages) || messages.length === 0) return res.status(400).json({ error: "Il n'y a pas encore de débat à résumer." });
+  const transcript = messages.slice(-60).map((m: any) => `[${String(m.agentName || "?").slice(0, 40)}]\n${String(m.content || "").slice(0, 1500)}`).join("\n\n---\n\n");
+  const cadre = diable
+    ? "Ce débat est une séance « Avocat du diable » : des IA ont cherché les failles d'un projet ou d'une décision. « pour » = ce qui tient debout malgré les critiques, « contre » = les failles et objections les plus sérieuses."
+    : "« pour » = arguments favorables à la proposition, « contre » = arguments défavorables.";
+  const prompt = `Sujet : "${String(topicTitle || "").slice(0, 300)}"${topicDescription ? ` (${String(topicDescription).slice(0, 800)})` : ""}
+
+Transcription :
+${transcript}
+
+Tu es secrétaire de séance. Rédige la fiche de synthèse de cette réunion, en français simple, sans jargon, fidèle à ce qui a été dit (n'invente aucun argument ni aucun chiffre). ${cadre}
+« angles_morts » = ce que personne n'a abordé ou n'a vraiment tranché, et qui compte. « conclusion » = 2 à 3 phrases : où en est la question, et la prochaine étape utile.
+Chaque liste : 2 à 6 éléments, une phrase courte chacun, les plus importants d'abord.
+Réponds STRICTEMENT en JSON valide : {"pour":["…"],"contre":["…"],"angles_morts":["…"],"conclusion":"…"}`;
+  try {
+    const r = await ecrireAvecLesCles(req.headers, "Tu es secrétaire de séance. Tu réponds uniquement en JSON.", prompt, { maxTokens: 1400, temperature: 0.3 });
+    const d = lireJsonIA(r.text, "{");
+    const liste = (x: any) => (Array.isArray(x) ? x : []).map((v: any) => String(v).trim()).filter(Boolean).slice(0, 6);
+    return res.json({ pour: liste(d.pour), contre: liste(d.contre), angles_morts: liste(d.angles_morts), conclusion: String(d.conclusion || "").trim(), ecritPar: r.ecritPar });
+  } catch (error: any) {
+    return repondreErreurIA(res, error);
+  }
+});
+
 // Analyse de la logique d'une réplique (avis d'une IA, pas une vérification des faits)
 app.post("/api/debate/analyze-fallacy", async (req, res) => {
   const { content, agentName, topicTitle } = req.body;

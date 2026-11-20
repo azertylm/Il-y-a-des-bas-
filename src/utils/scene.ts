@@ -6,12 +6,23 @@ import type { Topic } from "../types";
 
 /* ───────────────────────────── Formats de débat ───────────────────────────── */
 
-export type FormatDebat = "libre" | "pourcontre" | "roles";
+export type FormatDebat = "libre" | "pourcontre" | "roles" | "diable";
 
 export const FORMATS_DEBAT: { id: FormatDebat; nom: string; aide: string }[] = [
   { id: "libre", nom: "Libre / Nuancé", aide: "Chaque IA choisit sa position." },
   { id: "pourcontre", nom: "Pour vs Contre", aide: "Deux camps qui ne lâchent rien." },
   { id: "roles", nom: "Rôles tranchés", aide: "Pragmatique, Avocat du diable, Philosophe…" },
+];
+
+/** Mode « Avocat du Diable » : un projet ou une décision passé au crible, un angle d'attaque par IA. */
+export const CATEGORIE_DIABLE = "AVOCAT DU DIABLE";
+export const ANGLES_DIABLE: { nom: string; angle: string }[] = [
+  { nom: "Failles financières", angle: "l'argent : coûts cachés, rentabilité, trésorerie, hypothèses trop optimistes" },
+  { nom: "Failles pratiques", angle: "la mise en œuvre : temps, compétences, logistique, ce qui casse le premier jour" },
+  { nom: "Le point de vue des gens", angle: "les personnes concernées : clients, usagers, proches, équipe — pourquoi ils diraient non" },
+  { nom: "Risques juridiques et réglementaires", angle: "le droit et les règles : obligations, assurances, données personnelles, responsabilités" },
+  { nom: "Concurrence et alternatives", angle: "ce qui existe déjà, ce qui est moins cher ou plus simple, et pourquoi on choisirait autre chose" },
+  { nom: "Angles morts", angle: "ce que personne n'a vu : scénario du pire, dépendances fragiles, effets de bord, biais de celui qui décide" },
 ];
 
 export const ROLES_TRANCHES: { nom: string; consigne: string }[] = [
@@ -37,6 +48,17 @@ export function consigneFormat(format: FormatDebat, rang: number, sujet: string)
   if (format === "roles") {
     const r = ROLES_TRANCHES[rang % ROLES_TRANCHES.length];
     return { etiquette: r.nom.replace(/^(le |l')/, (m) => m), consigne: `RÔLE IMPOSÉ : tu joues ${r.nom}. ${r.consigne} Ne sors jamais de ce rôle.` };
+  }
+  if (format === "diable") {
+    const a = ANGLES_DIABLE[rang % ANGLES_DIABLE.length];
+    return {
+      etiquette: `😈 ${a.nom}`,
+      consigne:
+        `MODE AVOCAT DU DIABLE. On te soumet ce projet ou cette décision : « ${sujet} ». Ta seule mission : trouver ses failles, ` +
+        `ses angles morts et les objections les plus sérieuses, sous l'angle suivant : ${a.angle}. Ne félicite pas, ne résume pas le projet, ` +
+        `ne répète pas ce que les autres ont déjà dit : apporte des objections nouvelles, concrètes et précises (pas de procès d'intention). ` +
+        `Termine par une seule phrase « Pour s'en protéger : … ».`,
+    };
   }
   return { etiquette: "", consigne: "" };
 }
