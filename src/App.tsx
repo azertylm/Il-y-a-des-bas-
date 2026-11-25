@@ -3385,6 +3385,11 @@ export default function AIDebate() {
                     </div>
                   )}
 
+                  {/* Avertissement discret (rem : suit le bouton BIG) */}
+                  <p className="text-[0.7rem] leading-snug text-gray-400 text-center px-2 pt-1 shrink-0">
+                    Réponses générées par une IA : elles peuvent contenir des erreurs, vérifiez les informations importantes.
+                  </p>
+
                   <div ref={bottomRef} className="h-6" />
                 </div>
               )}
