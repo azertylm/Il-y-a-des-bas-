@@ -1,0 +1,1121 @@
+import { ADRESSE_INSCRIPTION, LIBELLE_ROLE, dateLisible, lienInscription, lireMembre } from './membre';
+import { ReglagesLabo } from './ReglagesLabo';
+import type { ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { MOTIFS_SIGNALEMENT, envoyerSignalement } from './labo/votes';
+import { useShell } from './ShellContext';
+import type { EcosystemApp } from './apps';
+import type { AlphaAppConfig, ShellStatus } from './config';
+import { IconCheck, IconCopy, IconExternal, IconHeart, IconShield, IconSparkles, IconStar } from './icons';
+import type { ShellConfig, ShellDonation } from './pricing';
+
+/**
+ * Les cinq panneaux que la base sait ouvrir par-dessus le contenu.
+ * Le type vit dans config.ts (il fait partie de la surface de configuration) ;
+ * on le ré-exporte ici pour que les panneaux s'importent d'un seul endroit.
+ */
+export type { ShellPanelId } from './config';
+import type { ShellPanelId } from './config';
+
+export const SHELL_PANELS: Record<ShellPanelId, { titre: string; sousTitre: string; icone: ReactNode }> = {
+  compte: { titre: 'Mon inscription alphabette', sousTitre: 'Gratuite avec un code d’invitation, pour toutes les applications', icone: '👤' },
+  cles: { titre: 'Clé d’API — IA souveraine', sousTitre: 'Mistral AI, hébergé en France', icone: '🔑' },
+  pass: { titre: 'L’abonnement alphabette', sousTitre: 'Débloquer les applications', icone: '⭐' },
+  sites: { titre: 'Les applications de l’écosystème', sousTitre: 'Registre central alphabette.fr', icone: '🧭' },
+  dons: { titre: 'Soutenir alphabette.fr', sousTitre: 'Sans publicité, sans revente de données', icone: '♥' },
+  nouveautes: { titre: 'Les nouveautés', sousTitre: 'Les dernières applications et les derniers jeux', icone: '🆕' },
+  langue: { titre: 'Langue', sousTitre: 'Français ou English', icone: '🌍' },
+  installer: { titre: 'Installer sur mon téléphone', sousTitre: 'L’appli à portée de doigt, sans magasin d’applications', icone: '📲' },
+  signaler: { titre: 'Signaler un problème ou un abus', sousTitre: 'Nous lisons chaque signalement sans délai', icone: '🚩' },
+  publier: { titre: 'Publier une appli', sousTitre: 'En 60 secondes · gagnez 10 € par an et par abonnement', icone: '🛠️' },
+  inviter: { titre: 'Inviter un ami', sousTitre: 'Un lien à partager, rien d’autre', icone: '🎁' },
+};
+
+/**
+ * Titre d'un panneau, adapté au cas d'une application **gratuite** : on ne peut
+ * pas annoncer « Débloquer les applications » à quelqu'un qui n'a rien à
+ * débloquer. Les liens vers le hub, eux, restent — c'est là que vit le reste de
+ * l'écosystème.
+ */
+export function infosPanneau(
+  id: ShellPanelId,
+  app: AlphaAppConfig,
+): { titre: string; sousTitre: string; icone: ReactNode } {
+  const base = SHELL_PANELS[id];
+  // L'espace dons porte le nom de l'application : c'est elle que l'on soutient,
+  // et c'est l'écosystème qui en profite.
+  if (id === 'dons') {
+    // Élision correcte quel que soit le nom (« de Révolution », « d’Info Perso »).
+    const de = /^[aeiouyàâäéèêëîïôöùûü]/i.test(app.name) ? `d’${app.name}` : `de ${app.name}`;
+    return {
+      ...base,
+      titre: 'Espace dons & soutien financier',
+      sousTitre: `Soutenir le développement ${de} et de l’écosystème souverain alphabette`,
+    };
+  }
+  if (!app.gratuit) return base;
+  if (id === 'pass') {
+    return { ...base, icone: '🎁', titre: `${app.name} est gratuite`, sousTitre: 'Aucun prix, aucun essai, aucune carte bancaire' };
+  }
+  return base;
+}
+
+export interface PanneauProps {
+  app: AlphaAppConfig;
+  config: ShellConfig;
+  hubUrl: string;
+  apps: EcosystemApp[];
+  /** Faux quand la liste vient de la liste de secours (hub injoignable). */
+  registreOk: boolean;
+  /** Ouvre un lien externe dans un nouvel onglet. */
+  ouvrir: (url: string) => void;
+  /** Bascule vers un autre panneau (sans refermer la feuille). */
+  basculer: (id: ShellPanelId) => void;
+}
+
+const ETAT: Record<ShellStatus, string> = {
+  ok: 'Prêt',
+  loading: 'En cours de chargement',
+  off: 'Non configurée',
+};
+
+const euros = (montant: number) => `${montant} €`;
+
+/** Une ligne d'application dans le panneau « sites ». */
+function LigneApp({ app, courant }: { app: EcosystemApp; courant: boolean }) {
+  const { favoris, basculerFavori, t } = useShell();
+  const epingle = favoris.includes(app.key);
+  const contenu = (
+    <>
+      <span className="ab-liste__initial" aria-hidden="true">
+        {app.icon ?? app.name.replace(/[^\p{L}\p{N}]/gu, '').charAt(0).toUpperCase()}
+      </span>
+      <span className="ab-liste__nom">
+        {app.name}
+        {app.badge ? <span className="ab-etiquette ab-etiquette--pass" style={{ marginLeft: 6 }}>{app.badge}</span> : null}
+      </span>
+      {courant ? (
+        <span className="ab-etiquette ab-etiquette--accent">Tu es ici</span>
+      ) : app.gratuit ? (
+        <span className="ab-etiquette ab-etiquette--accent">Gratuit</span>
+      ) : app.status && app.status !== 'actif' ? (
+        <span className="ab-etiquette">{app.status}</span>
+      ) : null}
+    </>
+  );
+
+  const etoile = (
+    <button
+      type="button"
+      className="ab-pico"
+      style={{ height: '2.2rem', minWidth: '2.2rem' }}
+      aria-pressed={epingle}
+      aria-label={epingle ? t('Retirer de mes favoris') : t('Épingler cette appli')}
+      data-ab-tip={epingle ? t('Retirer de mes favoris') : t('Épingler cette appli')}
+      onClick={() => basculerFavori(app.key)}
+    >
+      {epingle ? '★' : '☆'}
+    </button>
+  );
+
+  // Site courant, ou application sans adresse publique : pas un lien.
+  if (courant || !app.url) {
+    return (
+      <li style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+        <div className="ab-liste__item" style={{ cursor: 'default', flex: 1 }}>
+          {contenu}
+        </div>
+        {etoile}
+      </li>
+    );
+  }
+
+  // Navigation dans le même onglet, comme la barre écosystème.
+  return (
+    <li style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
+      <a className="ab-liste__item" href={app.url} style={{ flex: 1 }}>
+        {contenu}
+      </a>
+      {etoile}
+    </li>
+  );
+}
+
+function PanneauCompte({ apps, ouvrir, basculer }: PanneauProps) {
+  // Relue à chaque ouverture : l'inscription a pu être faite dans un autre onglet.
+  const membre = lireMembre();
+  const totalApplications = apps.length;
+  const allerA = (url: string) => {
+    try {
+      window.location.href = url;
+    } catch {
+      ouvrir(url);
+    }
+  };
+  if (membre) {
+    return (
+      <>
+        <ReglagesLabo />
+        <div className="ab-panneau">
+          <h4>👤 {membre.prenom}</h4>
+          <p>
+            <strong>{LIBELLE_ROLE[membre.role] ?? 'Inscrit(e)'}</strong>
+            {membre.depuis ? <> · inscrit(e) le {dateLisible(membre.depuis)}</> : null}
+          </p>
+          <p>
+            Inscription gratuite, sur invitation : toutes les applications alphabette vous reconnaissent sur cet
+            appareil, et l’accès vous est offert.
+          </p>
+          <p className="ab-note">
+            Votre inscription est gardée dans ce navigateur, rien n’est envoyé à un serveur. Sur un autre téléphone ou
+            ordinateur, entrez à nouveau votre code sur alphabette.fr.
+          </p>
+        </div>
+        <div className="ab-actions-ligne">
+          <button type="button" className="ab-btn ab-btn--accent ab-btn--lg" onClick={() => allerA(ADRESSE_INSCRIPTION)}>
+            Gérer mon inscription
+          </button>
+          <button type="button" className="ab-btn ab-btn--ghost ab-btn--lg" onClick={() => basculer('sites')}>
+            Voir {totalApplications > 1 ? `les ${totalApplications} applications` : 'les applications'}
+          </button>
+        </div>
+      </>
+    );
+  }
+  return (
+    <>
+      <ReglagesLabo />
+      <div className="ab-panneau">
+        <h4>Vous n’êtes pas encore inscrit(e)</h4>
+        <p>
+          L’inscription est <strong>gratuite avec un code d’invitation</strong>. Une fois inscrit(e), toutes les
+          applications alphabette vous reconnaissent sur cet appareil.
+        </p>
+        <p className="ab-note">Pas de code ? Les applications s’utilisent librement en attendant.</p>
+      </div>
+      <div className="ab-actions-ligne">
+        <button type="button" className="ab-btn ab-btn--accent ab-btn--lg" onClick={() => allerA(lienInscription())}>
+          🎟️ M’inscrire avec un code
+        </button>
+        <button type="button" className="ab-btn ab-btn--ghost ab-btn--lg" onClick={() => basculer('sites')}>
+          Voir les applications
+        </button>
+      </div>
+    </>
+  );
+}
+
+function PanneauCles({ app, config, hubUrl, ouvrir, basculer }: PanneauProps) {
+  const cles = app.apiKeysUrl ?? `${hubUrl.replace(/\/$/, '')}/cles`;
+  const etat = app.apiKeyState ?? 'ok';
+  return (
+    <>
+      <div className="ab-panneau">
+        <h4>État de la clé</h4>
+        <p>
+          <span className={`ab-status ab-status--${etat}`} style={{ display: 'inline-block', marginRight: 8 }} />
+          {ETAT[etat]}
+        </p>
+        <p className="ab-note">
+          Fournisseur : <strong>Mistral AI</strong> (Paris, France). Aucune donnée utilisateur n’est utilisée pour
+          l’entraînement.
+        </p>
+      </div>
+
+      <div className="ab-panneau">
+        <h4>Deux façons d’utiliser l’IA</h4>
+        <p>
+          <IconCheck width={13} height={13} /> <strong>Avec ta propre clé</strong> : tu crées une clé gratuite chez
+          Mistral (société française) et tu la colles ici, une seule fois. Tu gardes la main sur ce que tu consommes.
+        </p>
+        <p>
+          <IconSparkles width={13} height={13} /> <strong>Avec la clé d’Alphabette</strong> :{' '}
+          {app.gratuit
+            ? 'rien à faire, elle est fournie par l’écosystème.'
+            : `rien à faire, elle est incluse pendant les ${config.trialDays} jours d’essai et avec l’abonnement.`}
+        </p>
+      </div>
+
+      <div className="ab-panneau">
+        <h4>Où va ma clé ?</h4>
+        <p className="ab-note">
+          Ta clé reste sur ton appareil, dans ton navigateur. Elle n’est envoyée qu’à ton fournisseur d’IA, jamais à
+          Alphabette. Tu peux l’effacer quand tu veux.
+        </p>
+      </div>
+
+      <div className="ab-actions-ligne">
+        <button type="button" className="ab-btn ab-btn--accent ab-btn--lg" onClick={() => ouvrir(cles)}>
+          Ajouter ma clé <IconExternal width={14} height={14} />
+        </button>
+        <button type="button" className="ab-btn ab-btn--ghost ab-btn--lg" onClick={() => basculer('pass')}>
+          {app.gratuit ? '🧭 L’écosystème' : '⭐ Voir l’abonnement'}
+        </button>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Panneau « Pass » d’une application **gratuite** : aucun prix, aucune
+ * promotion, aucun bouton de paiement pour elle. On explique la gratuité, et on
+ * garde les liens vers le hub — c’est l’écosystème qui finance l’application.
+ */
+function PanneauGratuit({ app, config, apps, hubUrl, ouvrir, basculer }: PanneauProps) {
+  const base = hubUrl.replace(/\/$/, '');
+  const total = apps.length || app.counter?.total || 16;
+  const gratuites = apps.filter((entree) => entree.gratuit).length;
+  return (
+    <>
+      <div className="ab-panneau">
+        <h4>🎁 Gratuite, pour toujours</h4>
+        <p>
+          <strong>{app.name}</strong> est une application gratuite de l’écosystème alphabette : aucun prix, aucun essai
+          qui se transforme en abonnement, aucune carte bancaire, aucune publicité.
+        </p>
+        <p className="ab-note">
+          Elle vit sur les dons et sur ce que financent les autres applications. Rien ne t’est demandé pour l’utiliser,
+          ni aujourd’hui ni plus tard.
+        </p>
+      </div>
+
+      <div className="ab-actions-ligne">
+        <button type="button" className="ab-btn ab-btn--accent ab-btn--lg" onClick={() => ouvrir(base)}>
+          🧭 alphabette.fr <IconExternal width={14} height={14} />
+        </button>
+        <button type="button" className="ab-btn ab-btn--ghost ab-btn--lg" onClick={() => basculer('sites')}>
+          Voir les {total} application{total > 1 ? 's' : ''}
+        </button>
+        <button type="button" className="ab-btn ab-btn--don ab-btn--lg" onClick={() => basculer('dons')}>
+          ♥ Faire un don
+        </button>
+      </div>
+
+      <div className="ab-panneau">
+        <h4>Et les autres applications ?</h4>
+        <p>
+          {gratuites > 0 && (
+            <>
+              <strong>{gratuites}</strong> application{gratuites > 1 ? 's' : ''} de l’écosystème{' '}
+              {gratuites > 1 ? 'sont gratuites' : 'est gratuite'} — tu peux les ouvrir sans rien payer. Les autres se
+              débloquent avec le Pass :{' '}
+            </>
+          )}
+          {gratuites === 0 && <>Les autres applications se débloquent avec le Pass : </>}
+          <strong>{euros(config.perAppPerYear)} / an</strong> par application, dont 10 € pour son créateur. C’est ce qui
+          finance, entre autres, les applications gratuites comme celle-ci.
+        </p>
+        <p className="ab-note">
+          Les prix viennent du hub (<code>/api/config.json</code>) et les applications gratuites du registre
+          (<code>/api/apps</code>) : les deux se mettent à jour tout seuls.
+        </p>
+      </div>
+    </>
+  );
+}
+
+/**
+ * Un bouton « payer » n'est montré que s'il mène à un vrai lien de paiement.
+ * Les adresses d'exemple (« …/alphabette_app_15 ») ou vides n'en sont pas :
+ * tant que le hub n'en publie pas de vraies, on dit que le paiement n'est pas ouvert.
+ */
+export function paiementOuvert(lien: string | undefined): boolean {
+  return Boolean(lien) && /^https:\/\/buy\.stripe\.com\/[A-Za-z0-9]+$/.test(lien as string) && !/alphabette/i.test(lien as string);
+}
+
+/** Page des offres du Laboratoire : Pass Cadeau (carte imprimable), Pass Découverte 48 h, code cadeau. */
+const LIEN_CADEAU = 'https://alphabette.eu/pass/#cadeau';
+
+function PanneauPass(props: PanneauProps) {
+  if (props.app.gratuit) return <PanneauGratuit {...props} />;
+  const { config, ouvrir, basculer } = props;
+  const ouvert = paiementOuvert(config.paymentLinks.perApp);
+  const promo = ouvert ? config.promotion : undefined;
+  const membre = lireMembre();
+  return (
+    <>
+      {membre ? (
+        <div className="ab-panneau">
+          <h4>🎟️ {membre.prenom}, votre accès est offert</h4>
+          <p>Vous êtes inscrit(e) avec un code d’invitation : vous n’avez rien à payer.</p>
+        </div>
+      ) : (
+        <div className="ab-panneau">
+          <h4>🎟️ Vous avez un code d’invitation ?</h4>
+          <p>L’inscription est alors gratuite, pour toutes les applications.</p>
+          <div className="ab-actions-ligne">
+            <button
+              type="button"
+              className="ab-btn ab-btn--accent ab-btn--lg"
+              onClick={() => {
+                window.location.href = lienInscription();
+              }}
+            >
+              M’inscrire avec mon code
+            </button>
+          </div>
+        </div>
+      )}
+      {!ouvert && (
+        <div className="ab-panneau">
+          <h4>Le paiement en ligne n’est pas encore ouvert</h4>
+          <p>
+            Aujourd’hui, les applications s’utilisent librement. Voici le tarif prévu pour l’abonnement. D’ici là, tu
+            peux soutenir le projet par un don.
+          </p>
+        </div>
+      )}
+      {promo && (
+        <div className="ab-promo">
+          <IconStar width={16} height={16} />
+          <span>
+            {promo.badgeLabel ?? 'Offre en cours'}
+            {promo.discountPercent ? ` — ${promo.discountPercent} %` : ''}
+            {promo.couponCode ? ` avec le code ${promo.couponCode}` : ''}
+          </span>
+        </div>
+      )}
+
+      <div className="ab-offres">
+        <div className="ab-offre">
+          <span className="ab-etiquette">Une application</span>
+          <span className="ab-offre__prix">
+            {euros(config.perAppPerYear)} <small>/ an</small>
+          </span>
+          <ul>
+            <li>L’application de ton choix</li>
+            <li>{config.trialDays} jours d’essai avant de payer</li>
+          </ul>
+          {ouvert && (
+            <button type="button" className="ab-btn ab-btn--ghost ab-btn--lg" onClick={() => ouvrir(config.paymentLinks.perApp)}>
+              Abonnement {euros(config.perAppPerYear)}/an
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="ab-panneau">
+        <h4>Ce que finance l’abonnement</h4>
+        <p className="ab-note">
+          Les applications, leur hébergement et leurs évolutions, y compris celles qui restent gratuites. Pas de
+          publicité, pas de revente de données.
+        </p>
+      </div>
+
+      <div className="ab-actions-ligne">
+        {!ouvert && (
+          <button type="button" className="ab-btn ab-btn--don ab-btn--lg" onClick={() => basculer('dons')}>
+            ♥ Faire un don
+          </button>
+        )}
+        <button type="button" className="ab-btn ab-btn--ghost ab-btn--lg" onClick={() => basculer('sites')}>
+          🧭 Voir les applications
+        </button>
+      </div>
+
+      {ouvert && (
+        <div className="ab-actions-ligne">
+          <button type="button" className="ab-btn ab-btn--ghost ab-btn--lg" onClick={() => ouvrir(LIEN_CADEAU)}>
+            🎁 Offrir en cadeau
+          </button>
+        </div>
+      )}
+
+      {ouvert && <p className="ab-note">Paiement sécurisé par Stripe. 12 mois, aucun renouvellement automatique.</p>}
+    </>
+  );
+}
+
+function PanneauSites({ app, apps, registreOk, hubUrl, ouvrir, basculer }: PanneauProps) {
+  const total = app.counter?.total ?? apps.length;
+  const gratuites = apps.filter((entree) => entree.gratuit).length;
+  // Les applications gratuites d'abord : ce sont celles que l'on peut ouvrir
+  // tout de suite. Le tri est stable, l'ordre du registre est conservé ensuite.
+  const { favoris } = useShell();
+  const liste = [...apps].sort(
+    (a, b) =>
+      Number(favoris.includes(b.key)) - Number(favoris.includes(a.key)) ||
+      Number(Boolean(b.gratuit)) - Number(Boolean(a.gratuit)),
+  );
+  return (
+    <>
+      <div className="ab-panneau">
+        <h4>{app.gratuit ? 'Ton accès' : 'Compteur'}</h4>
+        <p>
+          {app.gratuit ? (
+            <>
+              <strong>{app.name}</strong> est <strong>gratuite</strong> : rien à débloquer ici. Voici les {total}{' '}
+              application{total > 1 ? 's' : ''} de l’écosystème
+              {gratuites > 0 && (
+                <>
+                  , dont <strong>{gratuites} gratuite{gratuites > 1 ? 's' : ''}</strong> (signalée
+                  {gratuites > 1 ? 's' : ''} « Gratuit » ci-dessous)
+                </>
+              )}{' '}
+              — c’est là que le Pass, lui, sert.
+            </>
+          ) : app.counter ? (
+            <>
+              <strong>{app.counter.unlocked}</strong> / <strong>{app.counter.total}</strong> applications débloquées
+              {typeof app.counter.trialDaysLeft === 'number' && app.counter.trialDaysLeft > 0 && (
+                <> · essai : {app.counter.trialDaysLeft} jour(s) restant(s)</>
+              )}
+              {gratuites > 0 && <> · {gratuites} gratuite{gratuites > 1 ? 's' : ''}</>}
+              .
+            </>
+          ) : (
+            <>Le registre central publie la liste des applications.</>
+          )}
+        </p>
+      </div>
+
+      <ul className="ab-liste">
+        {liste.map((entree) => (
+          <LigneApp key={entree.key} app={entree} courant={entree.key === app.key} />
+        ))}
+      </ul>
+
+      {!registreOk && (
+        <p className="ab-note">
+          Liste de secours : le registre du hub n’a pas répondu ({apps.length} sur {total} applications). Réessaie
+          quand alphabette.fr est joignable.
+        </p>
+      )}
+
+      <div className="ab-actions-ligne">
+        {app.gratuit ? (
+          <button
+            type="button"
+            className="ab-btn ab-btn--accent ab-btn--lg"
+            onClick={() => ouvrir(hubUrl.replace(/\/$/, ''))}
+          >
+            🧭 Ouvrir alphabette.fr <IconExternal width={14} height={14} />
+          </button>
+        ) : (
+          <button type="button" className="ab-btn ab-btn--ghost ab-btn--lg" onClick={() => basculer('pass')}>
+            ⭐ Débloquer avec le Pass
+          </button>
+        )}
+      </div>
+    </>
+  );
+}
+
+/** Repli de copie pour les navigateurs sans API presse-papiers (ou en http). */
+async function copierTexte(texte: string): Promise<boolean> {
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(texte);
+      return true;
+    }
+  } catch {
+    // Contexte non sécurisé ou permission refusée : on tente le repli.
+  }
+  try {
+    const zone = document.createElement('textarea');
+    zone.value = texte;
+    zone.setAttribute('readonly', '');
+    zone.style.position = 'fixed';
+    zone.style.top = '-1000px';
+    document.body.appendChild(zone);
+    zone.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(zone);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+/** Sélectionne le contenu d'un élément : repli quand la copie est refusée. */
+function selectionner(element: HTMLElement | null): void {
+  if (!element || typeof window === 'undefined' || !window.getSelection) return;
+  const selection = window.getSelection();
+  if (!selection) return;
+  const plage = document.createRange();
+  plage.selectNodeContents(element);
+  selection.removeAllRanges();
+  selection.addRange(plage);
+}
+
+/** Une valeur copiable : intitulé, valeur, bouton « Copier » avec confirmation. */
+function LigneCopier({ libelle, valeur }: { libelle: string; valeur: string }) {
+  const [etat, setEtat] = useState<'pret' | 'copie' | 'manuel'>('pret');
+  const code = useRef<HTMLElement>(null);
+  return (
+    <div className="ab-copier-ligne">
+      <span className="ab-copier-ligne__libelle">{libelle}</span>
+      <code ref={code}>{valeur}</code>
+      <button
+        type="button"
+        className={`ab-copier${etat === 'copie' ? ' ab-copier--ok' : ''}${etat === 'manuel' ? ' ab-copier--manuel' : ''}`}
+        title={`Copier ${libelle}`}
+        onClick={async () => {
+          const succes = await copierTexte(valeur);
+          if (!succes) selectionner(code.current);
+          setEtat(succes ? 'copie' : 'manuel');
+          window.setTimeout(() => setEtat('pret'), 2600);
+        }}
+      >
+        {etat === 'copie' ? (
+          <>
+            <IconCheck width={12} height={12} /> Copié
+          </>
+        ) : etat === 'manuel' ? (
+          <>Ctrl + C</>
+        ) : (
+          <>
+            <IconCopy width={12} height={12} /> Copier
+          </>
+        )}
+      </button>
+    </div>
+  );
+}
+
+/** Contreparties affichées si le hub n'en publie pas. */
+const CONTREPARTIES_DEFAUT = [
+  'Accès illimité et garanti à vie aux fonctionnalités actuelles et futures de l’écosystème.',
+  'Zéro abonnement récurrent : aucune reconduction tacite, aucun frais dissimulé.',
+  'Badge exclusif « Fondateur Pionnier », affiché dans ton profil.',
+  'Priorité sur les développements et vote consultatif sur les prochaines fonctionnalités.',
+];
+
+/**
+ * Espace dons complet, alimenté par le hub (`/api/config.json` → `donation`) :
+ * RIB copiable pour un virement direct (0 % de frais) et offre « Membre
+ * fondateur ». Aucun paiement en ligne, aucune donnée bancaire saisie ici.
+ */
+function EspaceDons({ hubUrl, ouvrir, basculer, don }: PanneauProps & { don: ShellDonation }) {
+  const hub = hubUrl.replace(/\/$/, '');
+  const minimum = don.montantMinimum ?? 30;
+  const montants = don.montants?.length ? don.montants : [minimum, minimum * 2, minimum * 3];
+  const [montant, setMontant] = useState(montants[1] ?? montants[0]);
+  const [libre, setLibre] = useState('');
+  const [pseudo, setPseudo] = useState('');
+  const [copie, setCopie] = useState<'pret' | 'ok' | 'manuel'>('pret');
+  const rib = useRef<HTMLDivElement>(null);
+
+  const libreNombre = Number(libre.replace(',', '.'));
+  const montantEffectif =
+    libre.trim() && Number.isFinite(libreNombre) && libreNombre > 0 ? Math.round(libreNombre) : montant;
+
+  const max = don.placeMax ?? 500;
+  const prises = Math.min(Math.max(don.placesAttribuees ?? 0, 0), max);
+  const restantes = Math.max(max - prises, 0);
+  const pourcent = max > 0 ? Math.round((prises / max) * 100) : 0;
+  const objet = don.objetVirement ?? 'DON ALPHABETTE';
+
+  const recapitulatif = [
+    `Don à l’écosystème alphabette — ${montantEffectif} €`,
+    don.titulaire && `Titulaire : ${don.titulaire}`,
+    don.banque && `Banque : ${don.banque}`,
+    don.domiciliation && `Domiciliation : ${don.domiciliation}`,
+    don.iban && `IBAN : ${don.iban}`,
+    don.bic && `BIC : ${don.bic}`,
+    `Objet du virement : ${objet}`,
+    pseudo.trim() && `Membre fondateur : ${pseudo.trim()}`,
+  ]
+    .filter(Boolean)
+    .join('\n');
+
+  const mailto = don.contact
+    ? `mailto:${don.contact}?subject=${encodeURIComponent(`Don alphabette — ${montantEffectif} €`)}&body=${encodeURIComponent(
+        `Bonjour,\n\nJe viens de faire un don de ${montantEffectif} € à l’écosystème alphabette par virement SEPA.\n${
+          pseudo.trim() ? `Pseudo de membre fondateur : ${pseudo.trim()}\n` : ''
+        }Objet du virement : ${objet}\n\nMerci d’enregistrer ma place de fondateur.\n`,
+      )}`
+    : null;
+
+  return (
+    <>
+      {don.exemple && (
+        <p className="ab-note ab-note--warn">
+          <IconShield width={13} height={13} /> Coordonnées d’exemple publiées par le hub : remplace-les par les
+          vraies dans <code>data/donation.json</code> avant de communiquer cet espace.
+        </p>
+      )}
+
+      <div className="ab-dons">
+        {/* ---------- Volet 1 : coordonnées bancaires ---------- */}
+        <div className="ab-don-carte">
+          <h4>Relevé d’identité bancaire (RIB)</h4>
+          <p className="ab-note">
+            Virement direct de compte à compte : <strong>0 % de frais</strong>, aucun intermédiaire, rien de prélevé
+            sur ton don.
+          </p>
+
+          <div className="ab-rib-copiable" ref={rib}>
+            {(don.banque || don.titulaire) && (
+              <div className="ab-rib">
+                <div className="ab-rib__champ">
+                  <span>Banque · titulaire du compte</span>
+                  <span className="ab-rib__valeur">{[don.banque, don.titulaire].filter(Boolean).join(' — ')}</span>
+                </div>
+                <div className="ab-rib__grille">
+                  {(
+                    [
+                      ['Code banque', don.codeBanque],
+                      ['Code guichet', don.codeGuichet],
+                      ['Numéro de compte', don.numeroCompte],
+                      ['Clé RIB', don.cleRib],
+                    ] as const
+                  )
+                    .filter(([, valeur]) => Boolean(valeur))
+                    .map(([libelle, valeur]) => (
+                      <div className="ab-rib__champ" key={libelle}>
+                        <span>{libelle}</span>
+                        <span className="ab-rib__valeur">{valeur}</span>
+                      </div>
+                    ))}
+                </div>
+                {don.domiciliation && (
+                  <div className="ab-rib__champ">
+                    <span>Domiciliation</span>
+                    <span className="ab-rib__valeur">{don.domiciliation}</span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {don.iban && <LigneCopier libelle="IBAN" valeur={don.iban} />}
+            {don.bic && <LigneCopier libelle="BIC" valeur={don.bic} />}
+          </div>
+
+          <p className="ab-note">
+            <IconCheck width={13} height={13} /> Virement SEPA instantané supporté — réception en quelques secondes.
+          </p>
+
+          <div className="ab-actions-ligne">
+            <button
+              type="button"
+              className="ab-btn ab-btn--don ab-btn--lg"
+              onClick={async () => {
+                const succes = await copierTexte(recapitulatif);
+                if (!succes) selectionner(rib.current);
+                setCopie(succes ? 'ok' : 'manuel');
+                window.setTimeout(() => setCopie('pret'), 2600);
+              }}
+            >
+              {copie === 'ok' ? (
+                <>
+                  <IconCheck width={14} height={14} /> Récapitulatif copié
+                </>
+              ) : copie === 'manuel' ? (
+                <>
+                  <IconCopy width={14} height={14} /> Sélectionné — appuie sur Ctrl+C
+                </>
+              ) : (
+                <>
+                  <IconCopy width={14} height={14} /> Partager / copier tout
+                </>
+              )}
+            </button>
+          </div>
+
+          <h4 className="ab-don-carte__titre-suivant">Comment faire un virement ?</h4>
+          <ol className="ab-etapes">
+            <li>Ouvre ton application bancaire et choisis « Faire un virement ».</li>
+            <li>
+              Colle l’<strong>IBAN</strong> ci-dessus : le titulaire <strong>{don.titulaire ?? 'destinataire'}</strong>{' '}
+              s’affiche automatiquement.
+            </li>
+            <li>
+              Saisis le montant et mets <strong>{objet}</strong> en objet
+              {pseudo.trim() ? `, avec « ${pseudo.trim()} » en référence` : ''}.
+            </li>
+            <li>Valide : avec le SEPA instantané, l’argent arrive en quelques secondes.</li>
+          </ol>
+        </div>
+
+        {/* ---------- Volet 2 : offre Membre fondateur ---------- */}
+        <div className="ab-don-carte ab-don-carte--vedette">
+          <span className="ab-etiquette ab-etiquette--pass">
+            Offre officielle Membre fondateur · {max} places max
+          </span>
+          <h4>Pass Fondateur — licence perpétuelle</h4>
+          <p className="ab-note">Accès garanti à vie • Zéro récurrence • Places limitées</p>
+
+          <div className="ab-jauges">
+            <div
+              className="ab-jauges__barre"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={max}
+              aria-valuenow={prises}
+              aria-label="Places de membre fondateur attribuées"
+            >
+              <div className="ab-jauges__remplie" style={{ width: `${pourcent}%` }} />
+            </div>
+            <span className="ab-note">
+              Places pionniers attribuées : <strong>{prises}</strong> / {max} — rareté : <strong>{restantes}</strong>{' '}
+              places restantes · prochain pionnier <strong>#{prises + 1}</strong>.
+            </span>
+          </div>
+
+          <h4 className="ab-don-carte__titre-suivant">Montant de ta contribution (dès {minimum} €)</h4>
+          <div className="ab-montants" role="group" aria-label="Montant du don">
+            {montants.map((valeur) => (
+              <button
+                key={valeur}
+                type="button"
+                className={`ab-montant${!libre.trim() && montant === valeur ? ' ab-montant--actif' : ''}`}
+                onClick={() => {
+                  setMontant(valeur);
+                  setLibre('');
+                }}
+              >
+                {valeur} €
+              </button>
+            ))}
+          </div>
+
+          <label className="ab-champ">
+            Autre montant (libre dès {minimum} €)
+            <input
+              type="number"
+              inputMode="numeric"
+              min={minimum}
+              step={1}
+              value={libre}
+              onChange={(evenement) => setLibre(evenement.target.value)}
+              placeholder={`${minimum} € minimum`}
+            />
+          </label>
+
+          <h4 className="ab-don-carte__titre-suivant">Contreparties incluses à vie</h4>
+          <ul>
+            {(don.contreparties?.length ? don.contreparties : CONTREPARTIES_DEFAUT).map((contrepartie, index) => (
+              <li key={index}>{contrepartie}</li>
+            ))}
+          </ul>
+
+          <label className="ab-champ">
+            Nom ou pseudo du membre fondateur (optionnel)
+            <input
+              type="text"
+              value={pseudo}
+              maxLength={60}
+              onChange={(evenement) => setPseudo(evenement.target.value)}
+              placeholder="Ton pseudo"
+            />
+          </label>
+
+          <div className="ab-actions-ligne">
+            {mailto && (
+              <a className="ab-btn ab-btn--pass ab-btn--lg" href={mailto}>
+                <IconHeart width={14} height={14} /> J’ai fait mon virement de {montantEffectif} €
+              </a>
+            )}
+            <button
+              type="button"
+              className="ab-btn ab-btn--ghost ab-btn--lg"
+              onClick={() => copierTexte(recapitulatif)}
+            >
+              <IconCopy width={14} height={14} /> Copier le récapitulatif
+            </button>
+          </div>
+
+          <p className="ab-note">
+            Aucun paiement en ligne et aucune donnée bancaire saisie ici : le virement se fait depuis ta banque, puis
+            tu préviens Alphabette pour recevoir ton badge <strong>Fondateur Pionnier</strong>.
+          </p>
+        </div>
+      </div>
+
+      <div className="ab-actions-ligne">
+        <button type="button" className="ab-btn ab-btn--ghost ab-btn--lg" onClick={() => basculer('sites')}>
+          🧭 Les applications
+        </button>
+        <button type="button" className="ab-btn ab-btn--ghost ab-btn--lg" onClick={() => ouvrir(hub)}>
+          alphabette.fr <IconExternal width={14} height={14} />
+        </button>
+      </div>
+
+      <p className="ab-note">
+        Coordonnées publiées par le hub (<code>data/donation.json</code>, relayé dans <code>/api/config.json</code>) :
+        une seule modification met à jour toutes les applications.
+      </p>
+    </>
+  );
+}
+
+function PanneauDonsSimple({ app, hubUrl, ouvrir }: PanneauProps) {
+  const don = app.donUrl ?? `${hubUrl.replace(/\/$/, '')}/don`;
+  return (
+    <>
+      <div className="ab-panneau">
+        <h4>À quoi sert un don</h4>
+        <p>
+          L’écosystème vit sans publicité et sans revente de données. Les dons financent les serveurs en France, les
+          modèles IA et le temps de développement.
+        </p>
+        <p className="ab-note">
+          <IconShield width={13} height={13} /> Un don n’est pas un abonnement : il ne débloque pas les applications.
+          Pour cela, c’est le Pass.
+        </p>
+      </div>
+
+      <div className="ab-actions-ligne">
+        <button type="button" className="ab-btn ab-btn--don ab-btn--lg" onClick={() => ouvrir(don)}>
+          ♥ Faire un don <IconExternal width={14} height={14} />
+        </button>
+        <button type="button" className="ab-btn ab-btn--ghost ab-btn--lg" onClick={() => ouvrir(`${hubUrl.replace(/\/$/, '')}/ecosysteme`)}>
+          Découvrir l’écosystème <IconExternal width={14} height={14} />
+        </button>
+      </div>
+
+      <p className="ab-note">
+        Page de dons : <strong>{don}</strong>. Modifiable dans <code>src/alphabette.app.ts</code> (champ{' '}
+        <code>donUrl</code>).
+      </p>
+    </>
+  );
+}
+
+/**
+ * Panneau « dons » : espace complet dès que le hub publie ses coordonnées
+ * bancaires, version simple sinon (hub injoignable ou non configuré).
+ */
+function PanneauDons(props: PanneauProps) {
+  const don = props.config.donation;
+  return don ? <EspaceDons {...props} don={don} /> : <PanneauDonsSimple {...props} />;
+}
+
+function PanneauNouveautes() {
+  const { nouveautes, marquerNouveautesVues } = useShell();
+  useEffect(() => {
+    marquerNouveautesVues();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  return (
+    <>
+      {nouveautes.length === 0 ? (
+        <div className="ab-panneau">
+          <p>Pas de nouveauté pour l’instant. Revenez bientôt !</p>
+        </div>
+      ) : (
+        <ul className="ab-liste">
+          {nouveautes.map((a) => (
+            <li key={a.key}>
+              <a className="ab-liste__item" href={a.url} style={{ alignItems: 'flex-start' }}>
+                <span className="ab-liste__initial" aria-hidden="true">{a.icon ?? '🆕'}</span>
+                <span className="ab-liste__nom">
+                  {a.name}
+                  {a.description ? (
+                    <span style={{ display: 'block', fontWeight: 400, fontSize: '0.85rem', opacity: 0.8 }}>
+                      {a.description}
+                    </span>
+                  ) : null}
+                </span>
+                {a.gratuit ? <span className="ab-etiquette ab-etiquette--accent">Gratuit</span> : null}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
+    </>
+  );
+}
+
+function PanneauLangue() {
+  const { langue, setLangue } = useShell();
+  const traduction = `https://translate.google.com/translate?sl=fr&tl=en&u=${encodeURIComponent(
+    typeof location === 'undefined' ? '' : location.href,
+  )}`;
+  return (
+    <>
+      <div className="ab-panneau">
+        <h4>Langue de la barre</h4>
+        <div className="ab-choix-langue">
+          <button type="button" className="ab-btn ab-btn--ghost ab-btn--lg" aria-pressed={langue === 'fr'} onClick={() => setLangue('fr')}>
+            🇫🇷 Français
+          </button>
+          <button type="button" className="ab-btn ab-btn--ghost ab-btn--lg" aria-pressed={langue === 'en'} onClick={() => setLangue('en')}>
+            🇬🇧 English
+          </button>
+        </div>
+      </div>
+      <div className="ab-panneau">
+        <h4>Traduire le contenu de la page</h4>
+        <p>
+          Les applications sont écrites en français. Pour les lire en anglais, une traduction automatique par Google
+          Traduction s’ouvre dans un nouvel onglet : la page lui est alors transmise, et vos données restent sur
+          l’original.
+        </p>
+        <div className="ab-actions-ligne">
+          <a className="ab-btn ab-btn--accent ab-btn--lg" href={traduction} target="_blank" rel="noopener noreferrer">
+            🌍 Open in English <IconExternal width={14} height={14} />
+          </a>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function PanneauInstaller() {
+  const { installation } = useShell();
+  const etapes: Record<string, string[]> = {
+    ios: ['Ouvrez cette page dans Safari.', 'Touchez le bouton Partager (le carré avec une flèche vers le haut).', 'Choisissez « Sur l’écran d’accueil », puis « Ajouter ».'],
+    android: ['Touchez les trois points ⋮ en haut à droite du navigateur.', 'Choisissez « Installer l’application » ou « Ajouter à l’écran d’accueil ».', 'Validez : l’icône apparaît parmi vos applications.'],
+    ordinateur: ['Dans la barre d’adresse, cherchez l’icône « Installer » (un écran avec une flèche).', 'Sinon, ouvrez le menu du navigateur et choisissez « Installer » ou « Créer un raccourci ».'],
+  };
+  const liste = etapes[installation.plateforme];
+  return (
+    <>
+      <div className="ab-panneau">
+        <h4>Comment faire</h4>
+        <ol style={{ paddingLeft: '1.2rem', display: 'grid', gap: '0.5rem' }}>
+          {liste.map((e) => (
+            <li key={e}>{e}</li>
+          ))}
+        </ol>
+      </div>
+      <p className="ab-note">
+        L’installation ajoute un raccourci sur l’écran d’accueil : l’application s’ouvre ensuite en plein écran, comme
+        une application ordinaire. Elle ne passe par aucun magasin d’applications.
+      </p>
+    </>
+  );
+}
+
+/** Racine du service « Créateurs » : même origine sur alphabette.eu, adresse complète ailleurs (le service accepte les sous-domaines alphabette). */
+function apiCreateurs(): string {
+  return typeof location !== 'undefined' && /(^|\.)alphabette\.eu$/.test(location.hostname) ? '/api/createurs/' : 'https://alphabette.eu/api/createurs/';
+}
+
+function PanneauSignaler({ app }: PanneauProps) {
+  const [motif, setMotif] = useState('bug');
+  const [details, setDetails] = useState('');
+  const [contact, setContact] = useState('');
+  const [envoi, setEnvoi] = useState(false);
+  const [retour, setRetour] = useState<{ ok: boolean; message: string } | null>(null);
+  const envoyer = async () => {
+    setEnvoi(true);
+    const r = await envoyerSignalement(app.voteId ?? app.key, motif, details, contact, apiCreateurs());
+    setRetour(r);
+    setEnvoi(false);
+  };
+  return (
+    <div className="ab-panneau">
+      <h4>Que se passe-t-il sur « {app.name} » ?</h4>
+      {retour?.ok ? (
+        <p role="status">{retour.message}</p>
+      ) : (
+        <>
+          <label className="ab-champ">
+            <span>Motif</span>
+            <select value={motif} onChange={(e) => setMotif(e.target.value)}>
+              {Object.entries(MOTIFS_SIGNALEMENT).map(([k, v]) => (
+                <option key={k} value={k}>{v}</option>
+              ))}
+            </select>
+          </label>
+          <label className="ab-champ">
+            <span>Décrivez le problème</span>
+            <textarea value={details} maxLength={1000} rows={4} onChange={(e) => setDetails(e.target.value)} />
+          </label>
+          <label className="ab-champ">
+            <span>Votre e-mail (facultatif, pour vous répondre)</span>
+            <input type="email" value={contact} maxLength={120} onChange={(e) => setContact(e.target.value)} />
+          </label>
+          <div className="ab-actions-ligne">
+            <button type="button" className="ab-btn ab-btn--accent ab-btn--lg" disabled={envoi || details.trim().length < 5} onClick={() => void envoyer()}>
+              Envoyer le signalement
+            </button>
+          </div>
+          {retour && !retour.ok && <p className="ab-note ab-note--warn" role="alert">{retour.message}</p>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function PanneauPublier() {
+  const { openExternal } = useShell();
+  return (
+    <>
+      <div className="ab-panneau">
+        <h4>Votre appli sur alphabette.eu, en 60 secondes</h4>
+        <p>Déposez un fichier .html, une archive .zip ou le lien d’un dépôt GitHub public. Nous lisons le titre et le README pour remplir la fiche à votre place.</p>
+        <ul style={{ paddingLeft: '1.2rem', display: 'grid', gap: '0.4rem' }}>
+          <li>Après validation, votre appli entre dans le Laboratoire, avec le badge « Pionnier » pour les 50 premières.</li>
+          <li>Avec 10 avis positifs et 75 % d’avis favorables, elle peut passer sur alphabette.fr : abonnement de 15 € par an, dont 10 € pour vous.</li>
+          <li>Votre appli s’exécute isolée du reste d’Alphabette ; elle évolue ensuite avec la communauté, la version d’origine restant archivée.</li>
+        </ul>
+        <div className="ab-actions-ligne">
+          <button type="button" className="ab-btn ab-btn--accent ab-btn--lg" onClick={() => openExternal('https://alphabette.eu/soumettre/')}>
+            Publier mon appli <IconExternal width={14} height={14} />
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+function PanneauInviter({ app }: PanneauProps) {
+  const [copie, setCopie] = useState(false);
+  const lien = typeof location !== 'undefined' ? `${location.origin}${location.pathname}` : 'https://alphabette.fr';
+  const texte = `Je te recommande « ${app.name} » sur Alphabette : ${lien}`;
+  const partager = async () => {
+    try {
+      if (typeof navigator !== 'undefined' && typeof navigator.share === 'function') {
+        await navigator.share({ title: app.name, text: `Je te recommande « ${app.name} » sur Alphabette`, url: lien });
+        return;
+      }
+    } catch {
+      return; // partage annulé par la personne
+    }
+    try {
+      await navigator.clipboard.writeText(texte);
+      setCopie(true);
+    } catch {
+      setCopie(false);
+    }
+  };
+  return (
+    <div className="ab-panneau">
+      <h4>Faire connaître « {app.name} »</h4>
+      <p>Un message prêt à envoyer, sans compte ni suivi :</p>
+      <p className="ab-note">{texte}</p>
+      <div className="ab-actions-ligne">
+        <button type="button" className="ab-btn ab-btn--accent ab-btn--lg" onClick={() => void partager()}>
+          {copie ? <IconCheck width={14} height={14} /> : <IconCopy width={14} height={14} />} {copie ? 'Message copié' : 'Partager ou copier'}
+        </button>
+        <a className="ab-btn ab-btn--ghost ab-btn--lg" href={`mailto:?subject=${encodeURIComponent(`Alphabette : ${app.name}`)}&body=${encodeURIComponent(texte)}`}>
+          Par e-mail
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/** Rend le panneau demandé. */
+export function PanneauShell({ id, ...props }: PanneauProps & { id: ShellPanelId }) {
+  switch (id) {
+    case 'compte':
+      return <PanneauCompte {...props} />;
+    case 'cles':
+      return <PanneauCles {...props} />;
+    case 'pass':
+      return <PanneauPass {...props} />;
+    case 'sites':
+      return <PanneauSites {...props} />;
+    case 'dons':
+      return <PanneauDons {...props} />;
+    case 'nouveautes':
+      return <PanneauNouveautes />;
+    case 'langue':
+      return <PanneauLangue />;
+    case 'installer':
+      return <PanneauInstaller />;
+    case 'signaler':
+      return <PanneauSignaler {...props} />;
+    case 'publier':
+      return <PanneauPublier />;
+    case 'inviter':
+      return <PanneauInviter {...props} />;
+    default:
+      return null;
+  }
+}
